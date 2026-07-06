@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0a0d12">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Γ Matrix">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>GEX Matrix — FlashAlpha</title>
+<style>
+  :root{
+    --bg:#0a0d12;
+    --panel:#0f141b;
+    --panel2:#131a23;
+    --border:#1e2733;
+    --border-soft:#171f29;
+    --text:#e6edf3;
+    --text-dim:#7c8a9a;
+    --text-faint:#4a5563;
+    --blue:#3aa0ff;
+    --blue-deep:#1c5fa8;
+    --orange:#ff8a3d;
+    --orange-deep:#b8541a;
+    --gold:#f2c14e;
+    --cyan:#33d9c4;
+    --purple:#b98af0;
+    --rose:#ff6fae;
+    --indigo:#6c7aff;
+    --amber:#ffb347;
+    --lime:#baff5f;
+    --green:#35d488;
+    --red:#ff5470;
+    --mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; background:var(--bg); color:var(--text);
+    font-family:var(--sans); height:100%; overflow:hidden;
+  }
+  body{ display:flex; flex-direction:column; height:100vh; }
+
+  /* ---------- Header ---------- */
+  header{
+    background:var(--panel);
+    border-bottom:1px solid var(--border);
+    padding:10px 14px;
+    display:flex; flex-direction:column; gap:8px;
+    flex-shrink:0;
+  }
+  .brand-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+  .brand{ display:flex; align-items:center; gap:6px; }
+  .brand .mark{ font-family:var(--mono); font-weight:700; letter-spacing:0.5px; color:var(--blue); font-size:15px; }
+  .brand .sub{ font-size:11px; color:var(--text-faint); font-family:var(--mono); }
+  .brand .mini-clock{ font-size:9px; color:var(--text-faint); font-family:var(--mono); }
+  button.mini{ padding:2px 6px; font-size:9px; }
+
+  .ticker-form{ display:flex; align-items:center; gap:6px; }
+  .ticker-form input[type=text]{
+    background:var(--bg); border:1px solid var(--border); color:var(--text);
+    font-family:var(--mono); font-size:15px; font-weight:600; letter-spacing:1px;
+    padding:7px 10px; border-radius:6px; width:100px; text-transform:uppercase;
+  }
+  .ticker-form input[type=text]:focus{ outline:none; border-color:var(--blue); }
+  button{
+    background:var(--panel2); border:1px solid var(--border); color:var(--text);
+    font-family:var(--sans); font-size:12px; padding:7px 12px; border-radius:6px;
+    cursor:pointer; transition:border-color .15s, background .15s;
+  }
+  button:hover{ border-color:var(--blue); }
+  button.primary{ background:var(--blue-deep); border-color:var(--blue); color:#fff; font-weight:600; }
+  button.primary:hover{ background:var(--blue); }
+  button.toggle{ padding:6px 10px; font-size:11px; }
+  button.toggle.active{ background:var(--blue-deep); border-color:var(--blue); color:#fff; }
+  button:disabled{ opacity:0.4; cursor:not-allowed; }
+  button.small{ padding:3px 7px; font-size:10px; }
+
+  .status-dot{ width:7px; height:7px; border-radius:50%; background:var(--text-faint); flex-shrink:0; }
+  .status-dot.live{ background:var(--green); box-shadow:0 0 6px var(--green); animation:pulse 2s infinite; }
+  .status-dot.err{ background:var(--red); box-shadow:0 0 6px var(--red); }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+  .controls-row{ display:flex; align-items:center; gap:10px; flex-wrap:nowrap; overflow-x:auto; font-size:10px; color:var(--text-dim); scrollbar-width:none; -ms-overflow-style:none; }
+  .controls-row::-webkit-scrollbar{ display:none; height:0; }
+  .control-group{ display:flex; align-items:center; gap:4px; flex-shrink:0; }
+  .control-label{ font-family:var(--mono); font-size:9px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.4px; margin-right:1px; }
+  .stepper{ display:flex; align-items:center; gap:3px; }
+  .stepper button{ padding:2px 6px; font-size:11px; line-height:1; }
+  .stepper .val{ font-family:var(--mono); font-size:11px; min-width:18px; text-align:center; color:var(--text); }
+  .controls-row button.toggle.small{ padding:3px 7px; font-size:10px; }
+
+  .budget-readout{ display:none; }
+
+  /* ---------- Metrics bar (compact pill strip, single row) ---------- */
+  .metrics-bar{
+    display:flex; flex-wrap:nowrap; gap:6px; overflow-x:auto; white-space:nowrap;
+    padding:6px 14px; border-bottom:1px solid var(--border);
+    background:var(--bg); flex-shrink:0; scrollbar-width:none; -ms-overflow-style:none;
+  }
+  .metrics-bar::-webkit-scrollbar{ display:none; height:0; }
+  .metric{
+    background:var(--panel2); border:1px solid var(--border); border-radius:14px;
+    padding:4px 10px; flex-shrink:0; display:flex; align-items:baseline; gap:5px;
+  }
+  .metric .lbl{ font-size:8px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.4px; font-family:var(--mono); }
+  .metric .v{ font-family:var(--mono); font-size:11.5px; font-weight:600; }
+  .metric .v.pos{ color:var(--blue); }
+  .metric .v.neg{ color:var(--orange); }
+  .metric .v.gold{ color:var(--gold); }
+  .metric .sub{ font-size:8px; color:var(--text-dim); font-family:var(--mono); }
+
+  /* ---------- Grid ---------- */
+  .grid-wrap{ flex:1; overflow:auto; position:relative; background:var(--bg); }
+  table.gex-grid{ border-collapse:separate; border-spacing:0; font-family:var(--mono); font-size:10.5px; min-width:100%; }
+  table.gex-grid thead th{
+    position:sticky; top:0; z-index:3; background:var(--panel);
+    border-bottom:1px solid var(--border); border-right:1px solid var(--border-soft);
+    padding:5px 7px; text-align:center; font-weight:600; white-space:nowrap;
+  }
+  table.gex-grid thead th.strike-head{ position:sticky; left:0; top:0; z-index:4; background:var(--panel); min-width:72px; padding:5px 4px; }
+  .strike-head-label{ font-size:10.5px; margin-bottom:2px; }
+  .strike-range-picker{ display:flex; gap:2px; justify-content:center; }
+  .srp-btn{
+    background:var(--bg); border:1px solid var(--border); color:var(--text-dim);
+    font-family:var(--mono); font-size:8px; padding:2px 4px; border-radius:4px; cursor:pointer;
+  }
+  .srp-btn.active{ background:var(--blue-deep); border-color:var(--blue); color:#fff; }
+  table.gex-grid thead th .exp-date{ font-size:10.5px; color:var(--text); }
+  table.gex-grid thead th .exp-mvc{ font-size:8px; color:var(--gold); font-weight:400; margin-top:1px; }
+
+  table.gex-grid tbody td{
+    padding:0; text-align:center; border-right:1px solid var(--border-soft);
+    border-bottom:1px solid var(--border-soft); min-width:64px; height:27px;
+    cursor:pointer; position:relative; transition:outline-color .1s;
+  }
+  table.gex-grid tbody td:hover{ outline:1.5px solid var(--text); outline-offset:-1.5px; }
+  table.gex-grid tbody td .cellval{ font-size:10.5px; }
+  table.gex-grid tbody td.empty{ color:var(--text-faint); cursor:default; }
+  table.gex-grid tbody td.empty:hover{ outline:none; }
+
+  table.gex-grid tbody th.strike-cell{
+    position:sticky; left:0; z-index:2; background:var(--panel2);
+    border-right:1px solid var(--border); font-weight:600; padding:0 5px;
+    white-space:nowrap; font-size:13px;
+    display:flex; align-items:center; justify-content:space-between; gap:3px;
+  }
+  table.gex-grid tbody tr:nth-child(even) th.strike-cell{ background:#161c25; }
+  .strike-tags{ display:flex; align-items:center; gap:2px; overflow:hidden; }
+  .strike-num{ white-space:nowrap; }
+  tr.atm-row td{ background:rgba(242,193,78,0.06); }
+  table.gex-grid tbody tr.atm-row th.strike-cell{ background:#f0f0f0; color:#111; }
+  table.gex-grid tbody tr.atm-row th.strike-cell .spot-tag{ color:#666; }
+  tr.flip-row th.strike-cell{ box-shadow: inset 0 1.5px 0 var(--gold), inset 0 -1.5px 0 var(--gold); }
+  tr.flip-row td{ box-shadow: inset 0 1.5px 0 rgba(242,193,78,0.55), inset 0 -1.5px 0 rgba(242,193,78,0.55); }
+
+  tr.pin-row th.strike-cell{ border-left:3px solid var(--cyan); }
+  tr.pin-row td:first-of-type{ }
+  th.strike-cell .pin-tag{ color:var(--cyan); font-size:14px; margin-left:3px; }
+
+  tr.bump-row th.strike-cell{ border-left:3px solid var(--purple); }
+  th.strike-cell .bump-tag{ color:var(--purple); font-size:14px; margin-left:3px; }
+
+  tr.nie-row th.strike-cell{ border-left:3px solid var(--rose); }
+  th.strike-cell .nie-tag{ color:var(--rose); font-size:14px; margin-left:3px; }
+
+  tr.reversal-row th.strike-cell{ border-left:3px solid var(--indigo); }
+  th.strike-cell .reversal-tag{ color:var(--indigo); font-size:13px; margin-left:3px; }
+
+  tr.surge-row th.strike-cell{ border-left:3px solid var(--amber); }
+  th.strike-cell .surge-tag{ color:var(--amber); font-size:14px; margin-left:3px; }
+
+  tr.magnet-row th.strike-cell{ border-left:3px solid var(--lime); }
+  th.strike-cell .magnet-tag{ color:var(--lime); font-size:14px; margin-left:3px; }
+
+  .chg-up{ color:var(--blue); font-size:10px; margin-left:3px; }
+  .chg-down{ color:var(--orange); font-size:10px; margin-left:3px; }
+  .chg-flat{ color:var(--text-faint); font-size:10px; margin-left:3px; }
+
+  tr.void-row td{
+    background-image: repeating-linear-gradient(135deg, rgba(255,255,255,0.035) 0 5px, transparent 5px 10px) !important;
+  }
+  tr.void-row th.strike-cell{ color:var(--text-faint); }
+  th.strike-cell .void-tag{ color:var(--text-faint); font-size:13px; margin-left:3px; }
+
+  th.strike-cell .spot-tag{ color:var(--gold); font-size:15px; margin-left:3px; }
+  th.strike-cell .mvc-star{ color:var(--gold); margin-right:2px; }
+  td.mvc-cell{ outline:1.5px solid var(--gold) !important; outline-offset:-1.5px; }
+  td.mvc-cell .cellval::after{ content:' ★'; color:var(--gold); font-size:8px; }
+  .oi-up{ color:var(--green); font-size:8px; margin-left:3px; }
+  .oi-down{ color:var(--red); font-size:8px; margin-left:3px; }
+  table.gex-grid thead th .exp-walls{ font-size:9px; margin-top:1px; }
+  table.gex-grid thead th .exp-walls .cw{ color:var(--blue); }
+  table.gex-grid thead th .exp-walls .pw{ color:var(--orange); }
+  .metric .sub.chip{ font-weight:600; }
+
+  .netcol-head{ min-width:96px !important; }
+  td.net-cell{ min-width:96px; text-align:left; padding:0 8px !important; cursor:default; }
+  tr:nth-child(even) td.net-cell{ background:#0d1117; }
+  td.net-cell:hover{ outline:none; }
+  .net-bar-wrap{ display:flex; align-items:center; gap:5px; height:100%; }
+  .net-bar-track{ flex:1; height:9px; background:var(--border-soft); border-radius:2px; position:relative; overflow:hidden; }
+  .net-bar-track::after{ content:''; position:absolute; left:50%; top:0; bottom:0; width:1px; background:var(--text-faint); opacity:0.6; z-index:1; }
+  .net-bar-fill{ position:absolute; top:0; bottom:0; }
+  .net-val{ font-size:10.5px; min-width:48px; text-align:right; }
+
+  /* ---------- Tooltip / detail panel ---------- */
+  .detail-panel{
+    position:fixed; bottom:0; left:0; right:0; background:var(--panel);
+    border-top:1px solid var(--border); padding:14px 18px; z-index:10;
+    transform:translateY(100%); transition:transform .18s ease-out;
+    max-height:46vh; overflow-y:auto;
+  }
+  .detail-panel.open{ transform:translateY(0); }
+  .detail-panel .dp-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .detail-panel .dp-title{ font-family:var(--mono); font-size:14px; font-weight:700; }
+  .detail-panel .dp-close{ cursor:pointer; color:var(--text-dim); font-size:18px; line-height:1; padding:2px 8px; }
+  .dp-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(120px,1fr)); gap:10px; }
+  .dp-item .lbl{ font-size:9px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; font-family:var(--mono); }
+  .dp-item .v{ font-family:var(--mono); font-size:14px; margin-top:2px; }
+
+  /* ---------- Custom expiry picker ---------- */
+  .picker-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:20;
+    display:none; align-items:flex-start; justify-content:center; padding-top:8vh;
+  }
+  .picker-overlay.open{ display:flex; }
+  .picker-box{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    padding:16px; width:340px; max-height:70vh; overflow-y:auto;
+  }
+  .picker-box h3{ margin:0 0 10px 0; font-size:13px; font-family:var(--mono); }
+  .picker-list label{
+    display:flex; align-items:center; gap:8px; padding:6px 4px; font-family:var(--mono);
+    font-size:12px; border-bottom:1px solid var(--border-soft); cursor:pointer;
+  }
+  .picker-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+
+  .empty-state{ padding:60px 20px; text-align:center; color:var(--text-dim); font-family:var(--mono); font-size:13px; }
+  .empty-state .big{ font-size:15px; color:var(--text); margin-bottom:8px; }
+
+  .legend-details{ border-top:1px solid var(--border-soft); background:var(--panel); flex-shrink:0; max-height:30vh; overflow-y:auto; }
+  .legend-details summary{
+    cursor:pointer; padding:6px 14px; font-size:10px; color:var(--text-dim);
+    font-family:var(--mono); list-style:none; user-select:none;
+  }
+  .legend-details summary::-webkit-details-marker{ display:none; }
+  .legend-details summary::before{ content:'▸ '; color:var(--text-faint); }
+  .legend-details[open] summary::before{ content:'▾ '; }
+  .legend{ display:flex; align-items:center; gap:10px; font-size:10px; color:var(--text-faint); font-family:var(--mono); padding:2px 14px 8px; flex-wrap:wrap;}
+  .legend-swatch{ width:26px; height:10px; border-radius:2px; display:inline-block; vertical-align:middle; margin-right:4px; }
+
+  ::-webkit-scrollbar{ width:10px; height:10px; }
+  ::-webkit-scrollbar-track{ background:var(--bg); }
+  ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:5px; }
+  ::-webkit-scrollbar-thumb:hover{ background:var(--text-faint); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand-row">
+    <div class="brand">
+      <span class="mark">Γ MATRIX</span>
+      <span class="status-dot" id="statusDot"></span>
+      <span class="mini-clock" id="lastUpdated">—</span>
+      <button type="button" class="small mini" id="apiKeyBtn">API Key</button>
+      <div class="metric"><div class="lbl">Net GEX</div><div class="v" id="mNetGex">—</div><div class="sub" id="mNetGexChip"></div></div>
+    </div>
+    <form class="ticker-form" id="tickerForm">
+      <input type="text" id="tickerInput" value="SPY" maxlength="6" autocomplete="off" spellcheck="false">
+      <button type="submit" class="primary" id="loadBtn">Load</button>
+      <div class="metric"><div class="lbl">Spot</div><div class="v" id="mSpot">—</div></div>
+      <div class="metric"><div class="lbl">Regime</div><div class="v" id="mRegime">—</div></div>
+    </form>
+  </div>
+
+  <div class="controls-row">
+    <div class="control-group">
+      <button class="toggle small" id="weekBtn">Week</button>
+      <button class="toggle small" id="mode0dte">0DTE</button>
+      <button class="small" id="pickExpBtn">Manual</button>
+    </div>
+
+    <div class="control-group">
+      <button class="toggle small" id="pollToggleBtn" data-secs="0">Poll: Off</button>
+    </div>
+
+    <div class="control-group">
+      <button class="small" id="loadIvBtn">Load IV / EM</button>
+      <button class="small" id="loadSurgeBtn">Load Hot</button>
+    </div>
+
+    <div class="budget-readout" id="budgetReadout">req today: 0/2400</div>
+  </div>
+</header>
+
+<div class="metrics-bar" id="metricsBar">
+  <div class="metric"><div class="lbl">MVC ★</div><div class="v gold" id="mMvc">—</div><div class="sub" id="mMvcSub"></div></div>
+  <div class="metric"><div class="lbl">Pin Score</div><div class="v" id="mPin">—</div><div class="sub" id="mPinSub"></div></div>
+  <div class="metric"><div class="lbl">ATM IV</div><div class="v" id="mIv">—</div></div>
+  <div class="metric"><div class="lbl">Exp. Move (1x)</div><div class="v" id="mEm">—</div></div>
+  <div id="zeroDtePills" style="display:contents;">
+    <div class="metric zdte-only" style="display:none;"><div class="lbl">0DTE Pin</div><div class="v" id="mZdtePin">—</div><div class="sub" id="mZdteMagnet"></div></div>
+    <div class="metric zdte-only" style="display:none;"><div class="lbl">Remaining Move</div><div class="v" id="mZdteMove">—</div></div>
+    <div class="metric zdte-only" style="display:none;"><div class="lbl">Time to Close</div><div class="v" id="mZdteClose">—</div></div>
+    <div class="metric zdte-only" style="display:none;"><div class="lbl">Theta/hr</div><div class="v neg" id="mZdteTheta">—</div></div>
+    <div class="metric zdte-only" style="display:none;"><div class="lbl">Gamma Accel</div><div class="v" id="mZdteAccel">—</div></div>
+  </div>
+</div>
+
+<div class="grid-wrap" id="gridWrap">
+  <div class="empty-state">
+    <div class="big">No data loaded yet</div>
+    Enter a ticker and hit Load. First time here? Tap "API Key" to save your FlashAlpha X-Api-Key — it's stored only in this browser.
+  </div>
+</div>
+
+<details class="legend-details">
+  <summary>Legend</summary>
+  <div class="legend">
+    <span><span class="legend-swatch" style="background:linear-gradient(90deg, rgba(255,138,61,0.85), rgba(255,138,61,0.08))"></span>put-dominant (negative GEX)</span>
+    <span><span class="legend-swatch" style="background:linear-gradient(90deg, rgba(58,160,255,0.08), rgba(58,160,255,0.85))"></span>call-dominant (positive GEX)</span>
+    <span>· gold row = gamma flip · gold strike = ATM</span>
+    <span>· <span style="color:var(--gold)">★</span> = MVC (largest |GEX| strike) · per-column ★ = that expiry's own MVC</span>
+    <span>· <span style="color:var(--green)">▲</span>/<span style="color:var(--red)">▼</span> = OI growing/shrinking that cell</span>
+    <span>· <span style="color:var(--cyan)">◉</span> Pin = pin-risk target strike</span>
+    <span>· <span style="color:var(--purple)">‖</span> Bump = gatekeeper (2nd-strongest node between spot and MVC)</span>
+    <span>· <span style="color:var(--rose)">⊙</span> Nie = midpoint between call wall and put wall (no-man's-land)</span>
+    <span>· <span style="color:var(--text-faint)">≈</span> Void = air pocket (thin GEX, low resistance)</span>
+    <span>· <span style="color:var(--indigo)">⇄</span> Reversal = heaviest node on the opposite side of spot from MVC</span>
+    <span>· <span style="color:var(--amber)">⚡</span> Hot = today's live-flow hot strike (tap "Load Hot")</span>
+    <span>· <span style="color:var(--lime)">⊕</span> Magnet = 0DTE pin target into the close (only in 0DTE mode)</span>
+    <span>· <span style="color:var(--blue)">▲</span>/<span style="color:var(--orange)">▼</span>% next to a tag = that level's |GEX| change vs first snapshot today · <span style="color:var(--text-faint)">ø</span> = flat (under 3%)</span>
+    <span>· tap any cell for detail</span>
+  </div>
+</details>
+
+<div class="detail-panel" id="detailPanel">
+  <div class="dp-head">
+    <div class="dp-title" id="dpTitle">—</div>
+    <div class="dp-close" id="dpClose">✕</div>
+  </div>
+  <div class="dp-grid" id="dpGrid"></div>
+</div>
+
+<div class="picker-overlay" id="pickerOverlay">
+  <div class="picker-box">
+    <h3>Select expirations (max 16)</h3>
+    <div class="picker-list" id="pickerList"></div>
+    <div class="picker-actions">
+      <button class="small" id="pickerCancel">Cancel</button>
+      <button class="small primary" id="pickerApply">Apply</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  const BASE = 'https://lab.flashalpha.com';
+  const DAILY_CAP = 2400;
+  const MIN_SNAP_INTERVAL_MS = 15000;
+  const REQ_TIMEOUT_MS = 12000;
+
+  const LS_APIKEY = 'fa_gexmatrix_apikey';
+  const LS_PREFS  = 'fa_gexmatrix_prefs';
+
+  function todayKey(){
+    const d = new Date();
+    return 'fa_gexmatrix_reqcount_' + d.toISOString().slice(0,10);
+  }
+
+  const state = {
+    apiKey: localStorage.getItem(LS_APIKEY) || '',
+    ticker: 'SPY',
+    allExpirations: [],
+    selectedExpirations: [],
+    manualPick: null,
+    weekMode: true,
+    mode0dte: false,
+    strikeRange: 20,
+    pollSecs: 0,
+    pollTimer: null,
+    busy: false,
+    gexByExp: {},
+    levels: null,
+    pinRisk: null,
+    pinRiskError: null,
+    zeroDte: null,
+    volatility: null,
+    spot: null,
+    lastSnap: null,
+    requestCount: parseInt(localStorage.getItem(todayKey()) || '0', 10),
+    ivLoaded: false,
+    surgeStrike: null,
+    surgeLoaded: false,
+  };
+
+  loadPrefs();
+
+  function loadPrefs(){
+    try{
+      const p = JSON.parse(localStorage.getItem(LS_PREFS) || '{}');
+      if(p.ticker) state.ticker = p.ticker;
+      if(p.strikeRange) state.strikeRange = p.strikeRange;
+    }catch(e){}
+  }
+  function savePrefs(){
+    localStorage.setItem(LS_PREFS, JSON.stringify({
+      ticker: state.ticker, strikeRange: state.strikeRange
+    }));
+  }
+
+  const $ = (id) => document.getElementById(id);
+  const tickerInput = $('tickerInput');
+  const tickerForm = $('tickerForm');
+  const statusDot = $('statusDot');
+  const lastUpdatedEl = $('lastUpdated');
+  const budgetReadout = $('budgetReadout');
+  const gridWrap = $('gridWrap');
+  const detailPanel = $('detailPanel');
+  const dpTitle = $('dpTitle');
+  const dpGrid = $('dpGrid');
+  const pickerOverlay = $('pickerOverlay');
+  const pickerList = $('pickerList');
+
+  tickerInput.value = state.ticker;
+
+  function incRequests(n){
+    state.requestCount += n;
+    localStorage.setItem(todayKey(), String(state.requestCount));
+    renderBudget();
+  }
+  function renderBudget(){
+    const remaining = DAILY_CAP - state.requestCount;
+    let cls = '';
+    if(remaining < 200) cls = 'crit'; else if(remaining < 600) cls = 'warn';
+    budgetReadout.innerHTML = `req today: <span class="${cls}">${state.requestCount}/${DAILY_CAP}</span> · ~${estimateSnapCost()}/snap`;
+  }
+  function estimateSnapCost(){
+    const n = state.manualPick ? state.manualPick.length : (state.selectedExpirations.length || 5);
+    return Math.max(n, 1) + 2 + (state.mode0dte ? 1 : 0); // + levels call + pin-risk call + zero-dte call
+  }
+
+  async function fa(path){
+    if(!state.apiKey){
+      throw new Error('No API key set. Click "API Key" to add your FlashAlpha X-Api-Key.');
+    }
+    if(state.requestCount >= DAILY_CAP){
+      throw new Error('Daily request cap reached (' + DAILY_CAP + '). Resets at midnight local time.');
+    }
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
+    try{
+      const res = await fetch(BASE + path, {
+        headers: { 'X-Api-Key': state.apiKey },
+        signal: ctrl.signal
+      });
+      incRequests(1);
+      if(!res.ok){
+        if(res.status === 403){
+          throw new Error('403 tier_restricted — this endpoint needs a higher FlashAlpha plan.');
+        }
+        if(res.status === 429){
+          throw new Error('429 rate limited — back off and retry.');
+        }
+        throw new Error(res.status + ' ' + res.statusText + ' on ' + path);
+      }
+      return await res.json();
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  function normalizeChain(json){
+    let exps = json.expirations || [];
+    if(exps.length && typeof exps[0] === 'object'){
+      return exps.map(e => e.expiration).sort();
+    }
+    return [...exps].sort();
+  }
+
+  function todayET(){
+    return new Date().toISOString().slice(0,10);
+  }
+
+  function currentWeekBounds(){
+    const now = new Date();
+    const day = now.getDay(); // 0=Sun..6=Sat
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMonday);
+    const friday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 4);
+    const fmt = d => d.toISOString().slice(0,10);
+    return { monday: fmt(monday), friday: fmt(friday) };
+  }
+
+  function pickExpirations(){
+    const all = state.allExpirations;
+    if(state.manualPick && state.manualPick.length){
+      return state.manualPick.filter(e => all.includes(e));
+    }
+    if(state.mode0dte){
+      const t = todayET();
+      const exact = all.filter(e => e === t);
+      if(exact.length) return exact;
+      return all.slice(0,1);
+    }
+    if(state.weekMode){
+      const { monday, friday } = currentWeekBounds();
+      const inWeek = all.filter(e => e >= monday && e <= friday);
+      return inWeek.length ? inWeek : all.slice(0, 5);
+    }
+    return all.slice(0, 8);
+  }
+
+  function dteFor(expiration){
+    const ms = new Date(expiration + 'T16:00:00Z') - new Date();
+    return Math.max(ms / 86400000, 0);
+  }
+
+  // per-expiration call wall / put wall / MVC (highest |net GEX| strike), computed
+  // over that expiry's FULL strike list (not just the visible/centered window)
+  function computeExpiryMeta(d){
+    if(!d || !d.strikes || !d.strikes.length) return {callWall:null, putWall:null, mvcStrike:null, mvcAbs:0};
+    let callWall=null, callWallVal=-Infinity, putWall=null, putWallVal=Infinity, mvcStrike=null, mvcAbs=-1;
+    d.strikes.forEach(s => {
+      const ng = s.net_gex || 0;
+      if(ng > callWallVal){ callWallVal = ng; callWall = s.strike; }
+      if(ng < putWallVal){ putWallVal = ng; putWall = s.strike; }
+      if(Math.abs(ng) > mvcAbs){ mvcAbs = Math.abs(ng); mvcStrike = s.strike; }
+    });
+    return {callWall, putWall, mvcStrike, mvcAbs};
+  }
+
+  // session baseline (first snapshot of the day for this ticker) for build/fade chip
+  function baselineKey(){
+    const d = new Date().toISOString().slice(0,10);
+    return 'fa_gexmatrix_baseline_' + state.ticker + '_' + d;
+  }
+  function getOrSetBaseline(totalNet){
+    const key = baselineKey();
+    let baseline = null;
+    try{ baseline = JSON.parse(localStorage.getItem(key)); }catch(e){}
+    if(!baseline){
+      baseline = { totalNet: totalNet, ts: Date.now() };
+      localStorage.setItem(key, JSON.stringify(baseline));
+    }
+    return baseline;
+  }
+
+  // per-strike session baseline (first snapshot of the day), used to show how much
+  // conviction at a notable level (MVC/Bump/Nie/Reversal/Pin) has grown or faded since open
+  function strikeBaselineKey(){
+    const d = new Date().toISOString().slice(0,10);
+    return 'fa_gexmatrix_strikebaseline_' + state.ticker + '_' + d;
+  }
+  function getOrSetStrikeBaseline(netByStrike){
+    const key = strikeBaselineKey();
+    let baseline = null;
+    try{ baseline = JSON.parse(localStorage.getItem(key)); }catch(e){}
+    if(!baseline){
+      baseline = {};
+      Object.entries(netByStrike).forEach(([k,v]) => { baseline[k] = v; });
+      localStorage.setItem(key, JSON.stringify(baseline));
+    }
+    return baseline;
+  }
+  function pctChangeBadge(currentVal, baselineVal){
+    if(baselineVal == null || Math.abs(baselineVal) < 1e5) return '';
+    const pct = ((Math.abs(currentVal) - Math.abs(baselineVal)) / Math.abs(baselineVal)) * 100;
+    if(Math.abs(pct) < 3) return '<span class="chg-flat" title="Flat — under 3% change vs open">ø</span>';
+    if(pct > 0) return `<span class="chg-up">▲${pct.toFixed(0)}%</span>`;
+    return `<span class="chg-down">▼${Math.abs(pct).toFixed(0)}%</span>`;
+  }
+
+  async function runSnap(isPoll){
+    if(state.busy) return;
+    if(!state.ticker) return;
+    if(state.lastSnap && (Date.now() - state.lastSnap) < MIN_SNAP_INTERVAL_MS){
+      return;
+    }
+    state.busy = true;
+    setStatus('loading');
+    try{
+      if(!state.allExpirations.length || !isPoll){
+        const chainJson = await fa('/v1/options/' + encodeURIComponent(state.ticker));
+        state.allExpirations = normalizeChain(chainJson);
+      }
+      const exps = pickExpirations();
+      state.selectedExpirations = exps;
+      if(!exps.length){
+        throw new Error('No expirations available for ' + state.ticker);
+      }
+
+      const results = await Promise.all(exps.map(e =>
+        fa('/v1/exposure/gex/' + encodeURIComponent(state.ticker) + '?expiration=' + e)
+          .then(r => ({exp:e, data:r}))
+          .catch(err => ({exp:e, error: err.message}))
+      ));
+
+      const byExp = {};
+      let spot = null;
+      results.forEach(r => {
+        if(r.data){
+          byExp[r.exp] = r.data;
+          if(spot == null) spot = r.data.underlying_price;
+        }
+      });
+      state.gexByExp = byExp;
+      state.spot = spot;
+
+      try{
+        const lvl = await fa('/v1/exposure/levels/' + encodeURIComponent(state.ticker));
+        state.levels = lvl.levels || lvl;
+      }catch(e){ state.levels = null; }
+
+      try{
+        const pr = await fa('/v1/flow/pin-risk/' + encodeURIComponent(state.ticker));
+        state.pinRisk = pr.pin_risk || pr;
+        state.pinRiskError = null;
+      }catch(e){ state.pinRisk = null; state.pinRiskError = e.message; }
+
+      if(state.mode0dte){
+        try{
+          const zd = await fa('/v1/exposure/zero-dte/' + encodeURIComponent(state.ticker));
+          state.zeroDte = zd.no_zero_dte ? null : zd;
+        }catch(e){ state.zeroDte = null; }
+      } else {
+        state.zeroDte = null;
+      }
+
+      state.lastSnap = Date.now();
+      lastUpdatedEl.textContent = new Date().toLocaleTimeString();
+      setStatus('live');
+      render();
+    }catch(err){
+      console.error(err);
+      setStatus('err');
+      showError(err.message);
+    }finally{
+      state.busy = false;
+    }
+  }
+
+  async function loadIv(){
+    if(!state.ticker) return;
+    const btn = $('loadIvBtn');
+    const origText = btn.textContent;
+    btn.textContent = 'Loading…';
+    btn.disabled = true;
+    try{
+      const vol = await fa('/v1/volatility/' + encodeURIComponent(state.ticker));
+      state.volatility = vol;
+      state.ivLoaded = true;
+      render();
+      // ATM IV / Exp Move pills are the last two in the metrics strip — scroll them into view
+      const mIvEl = $('mIv');
+      if(mIvEl) mIvEl.closest('.metric').scrollIntoView({behavior:'smooth', inline:'end', block:'nearest'});
+    }catch(err){
+      alert('IV load failed: ' + err.message);
+    }finally{
+      btn.textContent = state.ivLoaded ? 'Reload IV / EM' : origText;
+      btn.disabled = false;
+    }
+  }
+
+  async function loadSurge(){
+    if(!state.ticker || !state.selectedExpirations.length){
+      alert('Load the grid first, then Hot.');
+      return;
+    }
+    const btn = $('loadSurgeBtn');
+    const origText = btn.textContent;
+    btn.textContent = 'Loading…';
+    btn.disabled = true;
+    try{
+      const results = await Promise.all(state.selectedExpirations.map(e =>
+        fa('/v1/flow/gex/' + encodeURIComponent(state.ticker) + '?expiration=' + e)
+          .then(r => ({exp:e, data:r}))
+          .catch(err => ({exp:e, error: err.message}))
+      ));
+      const agg = {};
+      results.forEach(r => {
+        if(r.data && r.data.strikes){
+          r.data.strikes.forEach(s => { agg[s.strike] = (agg[s.strike] || 0) + (s.net_gex || 0); });
+        }
+      });
+      let surgeStrike = null, bestAbs = -1;
+      Object.entries(agg).forEach(([k,v]) => {
+        if(Math.abs(v) > bestAbs){ bestAbs = Math.abs(v); surgeStrike = parseFloat(k); }
+      });
+      state.surgeStrike = surgeStrike;
+      state.surgeLoaded = true;
+      render();
+    }catch(err){
+      alert('Hot load failed: ' + err.message);
+    }finally{
+      btn.textContent = state.surgeLoaded ? 'Reload Hot' : origText;
+      btn.disabled = false;
+    }
+  }
+
+  function setStatus(s){
+    statusDot.className = 'status-dot' + (s === 'live' ? ' live' : s === 'err' ? ' err' : '');
+  }
+  function showError(msg){
+    gridWrap.innerHTML = `<div class="empty-state"><div class="big" style="color:var(--red)">Error</div>${escapeHtml(msg)}</div>`;
+  }
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function percentile(arr, p){
+    if(!arr.length) return 0;
+    const sorted = [...arr].sort((a,b)=>a-b);
+    const idx = Math.min(sorted.length - 1, Math.floor(p * sorted.length));
+    return sorted[idx];
+  }
+  function gexColor(value, maxAbs){
+    if(!maxAbs || maxAbs <= 0) return 'rgba(255,255,255,0.03)';
+    const t = Math.min(Math.abs(value) / maxAbs, 1);
+    const eased = Math.pow(t, 0.75);
+    if(value >= 0){
+      return `rgba(58,160,255,${(0.05 + eased*0.80).toFixed(3)})`;
+    }
+    return `rgba(255,138,61,${(0.05 + eased*0.80).toFixed(3)})`;
+  }
+  function fmtMoney(v){
+    if(v == null || isNaN(v)) return '—';
+    const abs = Math.abs(v);
+    const sign = v < 0 ? '-' : '';
+    if(abs >= 1e9) return sign + '$' + (abs/1e9).toFixed(2) + 'B';
+    if(abs >= 1e6) return sign + '$' + (abs/1e6).toFixed(1) + 'M';
+    if(abs >= 1e3) return sign + '$' + (abs/1e3).toFixed(0) + 'K';
+    return sign + '$' + abs.toFixed(0);
+  }
+  function fmtNum(v){
+    if(v == null || isNaN(v)) return '—';
+    return v.toLocaleString();
+  }
+
+  function render(){
+    renderMetrics();
+    renderGrid();
+    renderBudget();
+  }
+
+  function renderMetrics(){
+    $('mSpot').textContent = state.spot != null ? '$' + state.spot.toFixed(2) : '—';
+
+    let totalNet = 0;
+    Object.values(state.gexByExp).forEach(d => totalNet += (d.net_gex || 0));
+    const mNetGex = $('mNetGex');
+    mNetGex.textContent = fmtMoney(totalNet);
+    mNetGex.className = 'v ' + (totalNet >= 0 ? 'pos' : 'neg');
+
+    const baseline = getOrSetBaseline(totalNet);
+    const chipEl = $('mNetGexChip');
+    if(baseline && Math.abs(baseline.totalNet) > 1){
+      const pct = ((totalNet - baseline.totalNet) / Math.abs(baseline.totalNet)) * 100;
+      if(pct > 3){
+        chipEl.textContent = `▲ Building +${pct.toFixed(0)}% vs open`;
+        chipEl.style.color = 'var(--blue)';
+      } else if(pct < -3){
+        chipEl.textContent = `▼ Fading ${pct.toFixed(0)}% vs open`;
+        chipEl.style.color = 'var(--orange)';
+      } else {
+        chipEl.textContent = 'Flat vs open';
+        chipEl.style.color = 'var(--text-faint)';
+      }
+    } else {
+      chipEl.textContent = '';
+    }
+
+    // overall MVC across all currently-loaded expirations (aggregate |net GEX| by strike)
+    const aggByStrike = {};
+    Object.values(state.gexByExp).forEach(d => {
+      if(!d || !d.strikes) return;
+      d.strikes.forEach(s => { aggByStrike[s.strike] = (aggByStrike[s.strike] || 0) + (s.net_gex || 0); });
+    });
+    let mvcStrike = null, mvcAbs = -1, mvcVal = 0;
+    Object.entries(aggByStrike).forEach(([k,v]) => {
+      if(Math.abs(v) > mvcAbs){ mvcAbs = Math.abs(v); mvcStrike = parseFloat(k); mvcVal = v; }
+    });
+    state.mvcStrike = mvcStrike;
+    $('mMvc').textContent = mvcStrike != null ? formatStrike(mvcStrike) : '—';
+    $('mMvcSub').textContent = mvcStrike != null ? fmtMoney(mvcVal) : '';
+
+    const mRegime = $('mRegime');
+    mRegime.textContent = totalNet >= 0 ? 'Positive (calm)' : 'Negative (volatile)';
+    mRegime.className = 'v ' + (totalNet >= 0 ? 'pos' : 'neg');
+
+    const mPin = $('mPin');
+    const mPinSub = $('mPinSub');
+    if(state.pinRisk && state.pinRisk.live_pin_risk != null){
+      let score = Number(state.pinRisk.live_pin_risk);
+      if(score <= 1) score = score * 100; // defensive: handle a 0-1 scale if ever returned
+      mPin.textContent = score.toFixed(0) + '/100';
+      mPin.style.color = score >= 70 ? 'var(--cyan)' : (score >= 40 ? 'var(--gold)' : 'var(--text-faint)');
+      const target = state.pinRisk.magnet_strike;
+      const dist = state.pinRisk.distance_to_magnet_pct;
+      mPinSub.textContent = target != null ? 'magnet $' + Number(target).toFixed(2) + (dist != null ? ' (' + Number(dist).toFixed(1) + '%)' : '') : '';
+    } else if(state.pinRiskError){
+      mPin.textContent = 'err';
+      mPin.style.color = 'var(--red)';
+      mPinSub.textContent = state.pinRiskError;
+    } else if(state.pinRisk){
+      // call succeeded (no exception) but live_pin_risk wasn't where we expected —
+      // show the actual top-level keys so the real response shape is visible
+      mPin.textContent = '?';
+      mPin.style.color = 'var(--orange)';
+      mPinSub.textContent = 'keys: ' + Object.keys(state.pinRisk).join(',');
+    } else {
+      mPin.textContent = '—';
+      mPin.style.color = '';
+      mPinSub.textContent = '';
+    }
+
+
+    if(state.volatility && state.volatility.atm_iv != null){
+      $('mIv').textContent = Number(state.volatility.atm_iv).toFixed(1) + '%';
+      const nearestExp = state.selectedExpirations[0];
+      if(nearestExp && state.spot){
+        const dte = Math.max(dteFor(nearestExp), 0.4);
+        const em = state.spot * (state.volatility.atm_iv/100) * Math.sqrt(dte/365);
+        $('mEm').textContent = '±$' + em.toFixed(2);
+      } else {
+        $('mEm').textContent = '—';
+      }
+    } else {
+      $('mIv').textContent = '— (load)';
+      $('mEm').textContent = '—';
+    }
+
+    // 0DTE-specific pills — only shown when 0DTE mode is on and the dedicated endpoint returned data
+    const showZdte = state.mode0dte && state.zeroDte;
+    document.querySelectorAll('.zdte-only').forEach(el => { el.style.display = showZdte ? 'flex' : 'none'; });
+    if(showZdte){
+      const zd = state.zeroDte;
+      if(zd.pin_risk){
+        $('mZdtePin').textContent = zd.pin_risk.pin_score != null ? Number(zd.pin_risk.pin_score).toFixed(0) + '/100' : '—';
+        $('mZdteMagnet').textContent = zd.pin_risk.magnet_strike != null ? 'magnet $' + Number(zd.pin_risk.magnet_strike).toFixed(2) : '';
+      }
+      if(zd.expected_move && zd.expected_move.remaining_1sd_dollars != null){
+        $('mZdteMove').textContent = '±$' + Number(zd.expected_move.remaining_1sd_dollars).toFixed(2);
+      }
+      $('mZdteClose').textContent = zd.time_to_close_hours != null ? Number(zd.time_to_close_hours).toFixed(1) + 'h' : '—';
+      if(zd.decay){
+        $('mZdteTheta').textContent = zd.decay.theta_per_hour_remaining != null ? fmtMoney(zd.decay.theta_per_hour_remaining) : '—';
+        $('mZdteAccel').textContent = zd.decay.gamma_acceleration != null ? Number(zd.decay.gamma_acceleration).toFixed(1) + 'x' : '—';
+      }
+    }
+  }
+
+  function renderGrid(){
+    const exps = state.selectedExpirations;
+    if(!exps.length){
+      gridWrap.innerHTML = `<div class="empty-state"><div class="big">No data</div>Try loading again.</div>`;
+      return;
+    }
+
+    const strikeSet = new Set();
+    exps.forEach(e => {
+      const d = state.gexByExp[e];
+      if(d && d.strikes) d.strikes.forEach(s => strikeSet.add(s.strike));
+    });
+    let strikes = [...strikeSet].sort((a,b) => b - a);
+
+    if(state.spot != null && strikes.length){
+      let atmIdx = 0, best = Infinity;
+      strikes.forEach((s,i) => { const diff = Math.abs(s - state.spot); if(diff < best){ best = diff; atmIdx = i; } });
+      const lo = Math.max(0, atmIdx - state.strikeRange);
+      const hi = Math.min(strikes.length, atmIdx + state.strikeRange + 1);
+      strikes = strikes.slice(lo, hi);
+    }
+
+    const cellData = {};
+    const netByStrike = {};
+    exps.forEach(e => {
+      const d = state.gexByExp[e];
+      if(!d || !d.strikes) return;
+      d.strikes.forEach(s => {
+        cellData[s.strike + '|' + e] = s;
+        netByStrike[s.strike] = (netByStrike[s.strike] || 0) + (s.net_gex || 0);
+      });
+    });
+
+    const visibleVals = [];
+    strikes.forEach(st => exps.forEach(e => {
+      const c = cellData[st + '|' + e];
+      if(c) visibleVals.push(Math.abs(c.net_gex || 0));
+    }));
+    const maxAbs = percentile(visibleVals, 0.92) || 1;
+    const netVals = strikes.map(s => Math.abs(netByStrike[s] || 0));
+    const netMaxAbs = percentile(netVals, 0.92) || 1;
+    const strikeBaseline = getOrSetStrikeBaseline(netByStrike);
+
+    let atmStrike = null;
+    if(state.spot != null && strikes.length){
+      let best = Infinity;
+      strikes.forEach(s => { const diff = Math.abs(s - state.spot); if(diff < best){ best = diff; atmStrike = s; } });
+    }
+    const flipVal = state.levels && state.levels.gamma_flip != null ? Number(state.levels.gamma_flip) : null;
+    let flipStrike = null;
+    if(flipVal != null && strikes.length){
+      let best = Infinity;
+      strikes.forEach(s => { const diff = Math.abs(s - flipVal); if(diff < best){ best = diff; flipStrike = s; } });
+    }
+    const pinTargetVal = state.pinRisk && state.pinRisk.magnet_strike != null ? Number(state.pinRisk.magnet_strike) : null;
+    let pinStrike = null;
+    if(pinTargetVal != null && strikes.length){
+      let best = Infinity;
+      strikes.forEach(s => { const diff = Math.abs(s - pinTargetVal); if(diff < best){ best = diff; pinStrike = s; } });
+    }
+
+    // 0DTE magnet — distinct from the general Pin marker; only present when 0DTE mode is on
+    const magnetVal = state.zeroDte && state.zeroDte.pin_risk && state.zeroDte.pin_risk.magnet_strike != null
+      ? Number(state.zeroDte.pin_risk.magnet_strike) : null;
+    let magnetStrike = null;
+    if(magnetVal != null && strikes.length){
+      let best = Infinity;
+      strikes.forEach(s => { const diff = Math.abs(s - magnetVal); if(diff < best){ best = diff; magnetStrike = s; } });
+    }
+
+    // Bump (gatekeeper node): 2nd-strongest |net GEX| strike sitting strictly between spot and the MVC.
+    // Price has to fight through this one before it can reach the MVC.
+    let bumpStrike = null;
+    if(state.spot != null && state.mvcStrike != null){
+      const lo = Math.min(state.spot, state.mvcStrike);
+      const hi = Math.max(state.spot, state.mvcStrike);
+      let bestAbs = -1;
+      strikes.forEach(s => {
+        if(s > lo && s < hi && s !== state.mvcStrike){
+          const v = Math.abs(netByStrike[s] || 0);
+          if(v > bestAbs){ bestAbs = v; bumpStrike = s; }
+        }
+      });
+    }
+
+    // Nie (midpoint): strike nearest the midpoint between call wall and put wall — the no-man's-land
+    // between the two dominant dealer positions, where directional conviction is weakest.
+    let nieStrike = null;
+    if(state.levels && state.levels.call_wall != null && state.levels.put_wall != null && strikes.length){
+      const mid = (Number(state.levels.call_wall) + Number(state.levels.put_wall)) / 2;
+      let best = Infinity;
+      strikes.forEach(s => { const diff = Math.abs(s - mid); if(diff < best){ best = diff; nieStrike = s; } });
+    }
+
+    // Reversal: the heaviest |net GEX| strike on the OPPOSITE side of spot from the MVC.
+    // If MVC is above price, Reversal is the biggest level below it, and vice versa —
+    // together they frame the two largest gravitational pulls on either side of the market.
+    let reversalStrike = null;
+    if(state.spot != null && state.mvcStrike != null && state.mvcStrike !== state.spot){
+      const mvcAboveSpot = state.mvcStrike > state.spot;
+      let bestAbs = -1;
+      strikes.forEach(s => {
+        const onOppositeSide = mvcAboveSpot ? s < state.spot : s > state.spot;
+        if(onOppositeSide){
+          const v = Math.abs(netByStrike[s] || 0);
+          if(v > bestAbs){ bestAbs = v; reversalStrike = s; }
+        }
+      });
+    }
+
+
+    // fast-move zone. Threshold set relative to the same percentile scale used for cell coloring.
+    let voidStrikes = new Set();
+    {
+      const voidThreshold = netMaxAbs * 0.06;
+      let runStart = -1, bestRun = [];
+      for(let i = 0; i <= strikes.length; i++){
+        const thin = i < strikes.length && Math.abs(netByStrike[strikes[i]] || 0) <= voidThreshold;
+        if(thin){
+          if(runStart === -1) runStart = i;
+        } else {
+          if(runStart !== -1){
+            const run = strikes.slice(runStart, i);
+            if(run.length > bestRun.length) bestRun = run;
+            runStart = -1;
+          }
+        }
+      }
+      if(bestRun.length >= 3) voidStrikes = new Set(bestRun);
+    }
+
+    // per-expiration call/put wall + MVC, computed over each expiry's full chain
+    const expMeta = {};
+    exps.forEach(e => { expMeta[e] = computeExpiryMeta(state.gexByExp[e]); });
+
+    const totalStrikes = state.strikeRange * 2;
+    let html = `<table class="gex-grid"><thead><tr><th class="strike-head">
+      <div class="strike-head-label">Strike</div>
+      <div class="strike-range-picker">
+        ${[20,40,60].map(t => `<button class="srp-btn${totalStrikes===t?' active':''}" data-total="${t}">${t}</button>`).join('')}
+      </div>
+    </th>`;
+    exps.forEach(e => {
+      const meta = expMeta[e];
+      const mvcHtml = meta.mvcStrike != null ? `<div class="exp-mvc">MVC $${formatStrike(meta.mvcStrike)}</div>` : '';
+      const wallsHtml = (meta.callWall != null) ?
+        `<div class="exp-walls"><span class="cw">CW $${formatStrike(meta.callWall)}</span> / <span class="pw">PW $${formatStrike(meta.putWall)}</span></div>` : '';
+      html += `<th><div class="exp-date">${e}</div>${mvcHtml}${wallsHtml}</th>`;
+    });
+    html += '<th class="netcol-head">Net GEX by strike →</th></tr></thead><tbody>';
+
+    strikes.forEach(strike => {
+      const isAtm = strike === atmStrike;
+      const isFlip = strike === flipStrike;
+      const isPin = strike === pinStrike;
+      const isBump = strike === bumpStrike;
+      const isNie = strike === nieStrike;
+      const isReversal = strike === reversalStrike;
+      const isSurge = state.surgeStrike != null && strike === state.surgeStrike;
+      const isMagnet = magnetStrike != null && strike === magnetStrike;
+      const isVoid = voidStrikes.has(strike);
+      const isMvcRow = strike === state.mvcStrike;
+      const rowClasses = [isAtm ? 'atm-row' : '', isFlip ? 'flip-row' : '', isPin ? 'pin-row' : '', isBump ? 'bump-row' : '', isNie ? 'nie-row' : '', isReversal ? 'reversal-row' : '', isSurge ? 'surge-row' : '', isMagnet ? 'magnet-row' : '', isVoid ? 'void-row' : ''].filter(Boolean).join(' ');
+      const chg = pctChangeBadge(netByStrike[strike] || 0, strikeBaseline[strike]);
+      html += `<tr class="${rowClasses}"><th class="strike-cell"><span class="strike-tags">${isMvcRow ? '<span class="mvc-star" title="MVC — largest |GEX| strike">★</span>' : ''}${isAtm ? '<span class="spot-tag" title="Spot — current price">◀</span>' : ''}${isPin ? '<span class="pin-tag" title="Pin — pin-risk target strike">◉</span>' : ''}${isBump ? '<span class="bump-tag" title="Bump — gatekeeper node between spot and MVC">‖</span>' : ''}${isNie ? '<span class="nie-tag" title="Nie — midpoint between call wall and put wall">⊙</span>' : ''}${isReversal ? '<span class="reversal-tag" title="Reversal — heaviest node opposite MVC">⇄</span>' : ''}${isSurge ? '<span class="surge-tag" title="Hot — live-flow hot strike today">⚡</span>' : ''}${isMagnet ? '<span class="magnet-tag" title="Magnet — 0DTE pin target into the close">⊕</span>' : ''}${isVoid ? '<span class="void-tag" title="Void — air pocket, thin GEX">≈</span>' : ''}${(isMvcRow||isBump||isNie||isReversal||isPin) ? chg : ''}</span><span class="strike-num">${formatStrike(strike)}</span></th>`;
+      exps.forEach(e => {
+        const c = cellData[strike + '|' + e];
+        if(!c){
+          html += `<td class="empty">—</td>`;
+        } else {
+          const bg = gexColor(c.net_gex || 0, maxAbs);
+          const isMvcCell = expMeta[e].mvcStrike === strike;
+          const oiChange = (c.call_oi_change || 0) + (c.put_oi_change || 0);
+          const arrow = oiChange > 0 ? '<span class="oi-up">▲</span>' : (oiChange < 0 ? '<span class="oi-down">▼</span>' : '');
+          html += `<td class="${isMvcCell ? 'mvc-cell' : ''}" style="background:${bg}" data-strike="${strike}" data-exp="${e}"><div class="cellval">${fmtMoney(c.net_gex)}${arrow}</div></td>`;
+        }
+      });
+      const net = netByStrike[strike] || 0;
+      const barPct = Math.min(Math.abs(net) / netMaxAbs, 1) * 50;
+      const barColor = net >= 0 ? 'var(--blue)' : 'var(--orange)';
+      const barLeft = net >= 0 ? 50 : (50 - barPct);
+      const barWidth = barPct;
+      html += `<td class="net-cell"><div class="net-bar-wrap">
+        <div class="net-bar-track">
+          <div class="net-bar-fill" style="left:${barLeft}%; width:${barWidth}%; background:${barColor};"></div>
+        </div>
+        <div class="net-val" style="color:${net>=0?'var(--blue)':'var(--orange)'}">${fmtMoney(net)}</div>
+      </div></td>`;
+      html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    gridWrap.innerHTML = html;
+
+    gridWrap.querySelectorAll('td[data-strike]').forEach(td => {
+      td.addEventListener('click', () => openDetail(parseFloat(td.dataset.strike), td.dataset.exp));
+    });
+    gridWrap.querySelectorAll('.srp-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.strikeRange = parseInt(btn.dataset.total) / 2;
+        savePrefs();
+        render();
+      });
+    });
+  }
+
+  function formatStrike(s){
+    return Number.isInteger(s) ? String(s) : s.toFixed(2);
+  }
+
+  function openDetail(strike, exp){
+    const d = state.gexByExp[exp];
+    if(!d) return;
+    const c = d.strikes.find(s => s.strike === strike);
+    if(!c) return;
+    dpTitle.textContent = `${state.ticker} ${formatStrike(strike)} · ${exp}`;
+    const items = [
+      ['Net GEX', fmtMoney(c.net_gex)],
+      ['Call GEX', fmtMoney(c.call_gex)],
+      ['Put GEX', fmtMoney(c.put_gex)],
+      ['Call OI', fmtNum(c.call_oi)],
+      ['Put OI', fmtNum(c.put_oi)],
+      ['Call OI Δ', c.call_oi_change != null ? (c.call_oi_change>=0?'+':'')+fmtNum(c.call_oi_change) : '—'],
+      ['Put OI Δ', c.put_oi_change != null ? (c.put_oi_change>=0?'+':'')+fmtNum(c.put_oi_change) : '—'],
+      ['Call Vol', fmtNum(c.call_volume)],
+      ['Put Vol', fmtNum(c.put_volume)],
+    ];
+    dpGrid.innerHTML = items.map(([lbl,v]) => `<div class="dp-item"><div class="lbl">${lbl}</div><div class="v">${v}</div></div>`).join('');
+    detailPanel.classList.add('open');
+  }
+  $('dpClose').addEventListener('click', () => detailPanel.classList.remove('open'));
+
+  const POLL_STEPS = [
+    { secs: 0, label: 'Poll: Off' },
+    { secs: 30, label: 'Poll: 30s' },
+    { secs: 60, label: 'Poll: 60s' },
+    { secs: 300, label: 'Poll: 5m' },
+  ];
+  function setPoll(secs){
+    state.pollSecs = secs;
+    const btn = $('pollToggleBtn');
+    const step = POLL_STEPS.find(s => s.secs === secs) || POLL_STEPS[0];
+    btn.textContent = step.label;
+    btn.dataset.secs = secs;
+    btn.classList.toggle('active', secs > 0);
+    if(state.pollTimer){ clearInterval(state.pollTimer); state.pollTimer = null; }
+    if(secs > 0){
+      const floor = Math.max(secs, estimateSnapCost() > 6 ? 30 : 15) * 1000;
+      state.pollTimer = setInterval(() => runSnap(true), floor);
+    }
+  }
+  $('pollToggleBtn').addEventListener('click', () => {
+    const cur = parseInt($('pollToggleBtn').dataset.secs);
+    const idx = POLL_STEPS.findIndex(s => s.secs === cur);
+    const next = POLL_STEPS[(idx + 1) % POLL_STEPS.length];
+    setPoll(next.secs);
+  });
+
+  tickerForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const t = tickerInput.value.trim().toUpperCase();
+    if(!t) return;
+    state.ticker = t;
+    state.allExpirations = [];
+    state.manualPick = null;
+    savePrefs();
+    runSnap(false);
+  });
+
+  $('weekBtn').addEventListener('click', () => {
+    state.weekMode = true;
+    state.mode0dte = false;
+    state.manualPick = null;
+    $('weekBtn').classList.add('active');
+    $('mode0dte').classList.remove('active');
+    if(state.allExpirations.length) runSnap(false);
+  });
+
+  $('mode0dte').addEventListener('click', () => {
+    state.mode0dte = !state.mode0dte;
+    state.weekMode = !state.mode0dte;
+    state.manualPick = null;
+    $('mode0dte').classList.toggle('active', state.mode0dte);
+    $('weekBtn').classList.toggle('active', state.weekMode);
+    if(state.allExpirations.length) runSnap(false);
+  });
+
+  $('loadIvBtn').addEventListener('click', loadIv);
+  $('loadSurgeBtn').addEventListener('click', loadSurge);
+
+  $('apiKeyBtn').addEventListener('click', () => {
+    const key = prompt('FlashAlpha X-Api-Key (stored only in this browser via localStorage):', state.apiKey || '');
+    if(key !== null){
+      state.apiKey = key.trim();
+      localStorage.setItem(LS_APIKEY, state.apiKey);
+    }
+  });
+
+  $('pickExpBtn').addEventListener('click', async () => {
+    if(!state.allExpirations.length){
+      try{
+        const chainJson = await fa('/v1/options/' + encodeURIComponent(state.ticker));
+        state.allExpirations = normalizeChain(chainJson);
+      }catch(err){ alert(err.message); return; }
+    }
+    const current = new Set(state.manualPick || pickExpirations());
+    pickerList.innerHTML = state.allExpirations.map(e =>
+      `<label><input type="checkbox" value="${e}" ${current.has(e) ? 'checked' : ''}> ${e} <span style="color:var(--text-faint)">(${Math.round(dteFor(e))}DTE)</span></label>`
+    ).join('');
+    pickerOverlay.classList.add('open');
+  });
+  $('pickerCancel').addEventListener('click', () => pickerOverlay.classList.remove('open'));
+  $('pickerApply').addEventListener('click', () => {
+    const checked = [...pickerList.querySelectorAll('input:checked')].map(i => i.value);
+    if(checked.length > 16){ alert('Max 16 expirations to protect your daily request budget.'); return; }
+    state.manualPick = checked.length ? checked : null;
+    if(state.manualPick){
+      state.weekMode = false;
+      state.mode0dte = false;
+      $('weekBtn').classList.remove('active');
+      $('mode0dte').classList.remove('active');
+    }
+    pickerOverlay.classList.remove('open');
+    renderBudget();
+    runSnap(false);
+  });
+
+  renderBudget();
+  $('weekBtn').classList.add('active');
+  if(!state.apiKey){
+    gridWrap.innerHTML = `<div class="empty-state"><div class="big">Add your API key to begin</div>Tap "API Key" above and paste your FlashAlpha X-Api-Key.</div>`;
+  } else {
+    runSnap(false);
+  }
+
+})();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(() => {
+      // silently ignore — e.g. running from file:// during local testing
+    });
+  });
+}
+</script>
+</body>
+</html>
