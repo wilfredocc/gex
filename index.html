@@ -122,7 +122,7 @@
     border-bottom:1px solid var(--border); border-right:1px solid var(--border-soft);
     padding:5px 7px; text-align:center; font-weight:600; white-space:nowrap;
   }
-  table.gex-grid thead th.strike-head{ position:sticky; left:0; top:0; z-index:4; background:var(--panel); min-width:72px; padding:5px 4px; }
+  table.gex-grid thead th.strike-head{ position:sticky; top:0; z-index:4; background:var(--panel); min-width:72px; padding:5px 4px; }
   .strike-head-label{ font-size:10.5px; margin-bottom:2px; }
   .strike-range-picker{ display:flex; gap:2px; justify-content:center; }
   .srp-btn{
@@ -144,7 +144,7 @@
   table.gex-grid tbody td.empty:hover{ outline:none; }
 
   table.gex-grid tbody th.strike-cell{
-    position:sticky; left:0; z-index:2; background:var(--panel2);
+    position:relative; z-index:2; background:var(--panel2);
     border-right:1px solid var(--border); font-weight:600; padding:0 5px;
     white-space:nowrap; font-size:13px;
   }
@@ -400,6 +400,7 @@
     ivLoaded: false,
     surgeStrike: null,
     surgeLoaded: false,
+    stickyLeftEls: [],
   };
 
   loadPrefs();
@@ -1063,6 +1064,16 @@
         render();
       });
     });
+
+    // Firefox doesn't reliably support left:0 sticky on table cells, so the strike
+    // column's horizontal pin is driven manually via transform, synced to scroll.
+    state.stickyLeftEls = Array.from(gridWrap.querySelectorAll('.strike-cell, .strike-head'));
+    applyStickyTransform();
+  }
+
+  function applyStickyTransform(){
+    const tx = gridWrap.scrollLeft;
+    (state.stickyLeftEls || []).forEach(el => { el.style.transform = 'translateX(' + tx + 'px)'; });
   }
 
   function formatStrike(s){
@@ -1188,6 +1199,10 @@
 
   renderBudget();
   $('weekBtn').classList.add('active');
+  gridWrap.addEventListener('scroll', () => {
+    if(state._stickyRaf) return;
+    state._stickyRaf = requestAnimationFrame(() => { applyStickyTransform(); state._stickyRaf = null; });
+  });
   if(!state.apiKey){
     gridWrap.innerHTML = `<div class="empty-state"><div class="big">Add your API key to begin</div>Tap "API Key" above and paste your FlashAlpha X-Api-Key.</div>`;
   } else {
