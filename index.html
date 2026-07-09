@@ -87,6 +87,20 @@
 
   .controls-row{ display:flex; align-items:center; gap:10px; flex-wrap:nowrap; overflow-x:auto; font-size:10px; color:var(--text-dim); scrollbar-width:none; -ms-overflow-style:none; }
   .controls-row::-webkit-scrollbar{ display:none; height:0; }
+
+  button#favBtn{ font-size:15px; padding:5px 9px; color:var(--text-dim); }
+  button#favBtn.active{ color:var(--gold); border-color:var(--gold); }
+
+  .watchlist-row{
+    display:none; align-items:center; gap:6px; overflow-x:auto; white-space:nowrap;
+    padding:0 14px 8px; scrollbar-width:none; -ms-overflow-style:none;
+  }
+  .watchlist-row::-webkit-scrollbar{ display:none; height:0; }
+  .wl-chip{
+    flex-shrink:0; background:var(--panel2); border:1px solid var(--border); color:var(--text-dim);
+    font-family:var(--mono); font-size:11px; padding:4px 10px; border-radius:12px; cursor:pointer;
+  }
+  .wl-chip.active{ background:var(--blue-deep); border-color:var(--blue); color:#fff; }
   .control-group{ display:flex; align-items:center; gap:4px; flex-shrink:0; }
   .control-label{ font-family:var(--mono); font-size:9px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.4px; margin-right:1px; }
   .stepper{ display:flex; align-items:center; gap:3px; }
@@ -273,11 +287,14 @@
     </div>
     <form class="ticker-form" id="tickerForm">
       <input type="text" id="tickerInput" value="SPY" maxlength="6" autocomplete="off" spellcheck="false">
+      <button type="button" class="small" id="favBtn" title="Add to watchlist">☆</button>
       <button type="submit" class="primary" id="loadBtn">Load</button>
       <div class="metric"><div class="lbl">Spot</div><div class="v" id="mSpot">—</div></div>
       <div class="metric"><div class="lbl">Regime</div><div class="v" id="mRegime">—</div></div>
     </form>
   </div>
+
+  <div class="watchlist-row" id="watchlistRow"></div>
 
   <div class="controls-row">
     <div class="control-group">
@@ -293,6 +310,7 @@
     <div class="control-group">
       <button class="small" id="loadIvBtn">Load IV / EM</button>
       <button class="small" id="loadSurgeBtn">Load Hot</button>
+      <div class="metric"><div class="lbl">MVC ★</div><div class="v gold" id="mMvc">—</div><div class="sub" id="mMvcSub"></div></div>
     </div>
 
     <div class="budget-readout" id="budgetReadout">req today: 0/2400</div>
@@ -300,7 +318,6 @@
 </header>
 
 <div class="metrics-bar" id="metricsBar">
-  <div class="metric"><div class="lbl">MVC ★</div><div class="v gold" id="mMvc">—</div><div class="sub" id="mMvcSub"></div></div>
   <div class="metric"><div class="lbl">Pin Score</div><div class="v" id="mPin">—</div><div class="sub" id="mPinSub"></div></div>
   <div class="metric"><div class="lbl">ATM IV</div><div class="v" id="mIv">—</div></div>
   <div class="metric"><div class="lbl">Exp. Move (1x)</div><div class="v" id="mEm">—</div></div>
@@ -370,6 +387,7 @@
 
   const LS_APIKEY = 'fa_gexmatrix_apikey';
   const LS_PREFS  = 'fa_gexmatrix_prefs';
+  const LS_WATCHLIST = 'fa_gexmatrix_watchlist';
 
   function todayKey(){
     const d = new Date();
@@ -416,6 +434,46 @@
     localStorage.setItem(LS_PREFS, JSON.stringify({
       ticker: state.ticker, strikeRange: state.strikeRange
     }));
+  }
+
+  function loadWatchlist(){
+    try{ return JSON.parse(localStorage.getItem(LS_WATCHLIST)) || []; }catch(e){ return []; }
+  }
+  function saveWatchlist(list){
+    localStorage.setItem(LS_WATCHLIST, JSON.stringify(list));
+  }
+  function updateFavBtn(){
+    const list = loadWatchlist();
+    const isFav = list.includes(state.ticker);
+    const btn = $('favBtn');
+    btn.textContent = isFav ? '★' : '☆';
+    btn.classList.toggle('active', isFav);
+  }
+  function renderWatchlist(){
+    const list = loadWatchlist();
+    const row = $('watchlistRow');
+    if(!list.length){
+      row.style.display = 'none';
+      row.innerHTML = '';
+      return;
+    }
+    row.style.display = 'flex';
+    row.innerHTML = list.map(t =>
+      `<button class="wl-chip${t === state.ticker ? ' active' : ''}" data-ticker="${t}">${t}</button>`
+    ).join('');
+    row.querySelectorAll('.wl-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const t = btn.dataset.ticker;
+        tickerInput.value = t;
+        state.ticker = t;
+        state.allExpirations = [];
+        state.manualPick = null;
+        savePrefs();
+        updateFavBtn();
+        renderWatchlist();
+        runSnap(false);
+      });
+    });
   }
 
   const $ = (id) => document.getElementById(id);
@@ -1136,7 +1194,21 @@
     state.allExpirations = [];
     state.manualPick = null;
     savePrefs();
+    updateFavBtn();
+    renderWatchlist();
     runSnap(false);
+  });
+
+  $('favBtn').addEventListener('click', () => {
+    let list = loadWatchlist();
+    if(list.includes(state.ticker)){
+      list = list.filter(t => t !== state.ticker);
+    } else {
+      list.push(state.ticker);
+    }
+    saveWatchlist(list);
+    updateFavBtn();
+    renderWatchlist();
   });
 
   $('weekBtn').addEventListener('click', () => {
@@ -1203,6 +1275,8 @@
     if(state._stickyRaf) return;
     state._stickyRaf = requestAnimationFrame(() => { applyStickyTransform(); state._stickyRaf = null; });
   });
+  updateFavBtn();
+  renderWatchlist();
   if(!state.apiKey){
     gridWrap.innerHTML = `<div class="empty-state"><div class="big">Add your API key to begin</div>Tap "API Key" above and paste your FlashAlpha X-Api-Key.</div>`;
   } else {
