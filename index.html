@@ -744,12 +744,37 @@
           .then(r => ({exp:e, data:r}))
           .catch(err => ({exp:e, error: err.message}))
       ));
+
+      // Diagnostic: if every request errored, or every response is missing `strikes`,
+      // or the response shape doesn't match what we expect, surface it rather than
+      // silently proceeding with an empty/meaningless result.
+      const anySuccess = results.some(r => r.data);
+      if(!anySuccess){
+        const firstErr = results.find(r => r.error);
+        throw new Error('All requests failed. ' + (firstErr ? firstErr.error : ''));
+      }
+      const sampleWithStrikes = results.find(r => r.data && Array.isArray(r.data.strikes) && r.data.strikes.length);
+      if(!sampleWithStrikes){
+        const sample = results.find(r => r.data);
+        throw new Error('Response has no strikes[] array. Top-level keys: ' + Object.keys(sample.data).join(', '));
+      }
+
       const agg = {};
       results.forEach(r => {
         if(r.data && r.data.strikes){
           r.data.strikes.forEach(s => { agg[s.strike] = (agg[s.strike] || 0) + (s.net_gex || 0); });
         }
       });
+
+      // Diagnostic: if every aggregated value is exactly 0 despite strikes existing,
+      // that's very unlikely to be real data — almost certainly means `net_gex` isn't
+      // the right field name in this response, and we're silently reading `undefined`.
+      const allZero = Object.values(agg).length > 0 && Object.values(agg).every(v => v === 0);
+      if(allZero){
+        const keys = Object.keys(sampleWithStrikes.data.strikes[0]).join(', ');
+        throw new Error('All values came back as 0 — likely wrong field name. Sample strike keys: ' + keys);
+      }
+
       let surgeStrike = null, bestAbs = -1;
       Object.entries(agg).forEach(([k,v]) => {
         if(Math.abs(v) > bestAbs){ bestAbs = Math.abs(v); surgeStrike = parseFloat(k); }
