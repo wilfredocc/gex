@@ -839,14 +839,29 @@
     const panel = $('narrativePanel');
     try{
       const res = await fa('/v1/exposure/narrative/' + encodeURIComponent(state.ticker));
-      // Response field name isn't confirmed against live data yet — try the likely
-      // candidates, and if none match, show the raw keys so we can fix it fast.
-      const text = res.narrative || res.summary || res.text || res.analysis || res.narrative_text;
-      if(typeof text === 'string' && text.length){
+      // `narrative` is confirmed to exist at the top level, but it's not a plain string —
+      // it's a nested object. Try common nested field names before giving up.
+      let text = null;
+      const n = res.narrative;
+      if(typeof n === 'string'){
+        text = n;
+      } else if(n && typeof n === 'object'){
+        text = n.text || n.summary || n.narrative || n.content || n.full_text || n.body;
+        // if it's an object of labeled sections (e.g. {accelerant: "...", flip: "..."}),
+        // join every string value found into one readable block
+        if(!text){
+          const parts = Object.entries(n)
+            .filter(([k,v]) => typeof v === 'string' && v.length)
+            .map(([k,v]) => `<strong>${k}:</strong> ${v.replace(/</g,'&lt;')}`);
+          if(parts.length) text = parts.join('<br>');
+        }
+      }
+      if(text && text.length){
         panel.style.display = 'block';
-        panel.innerHTML = '<strong>Narrative</strong> — ' + text.replace(/</g,'&lt;');
+        panel.innerHTML = text.includes('<strong>') ? text : ('<strong>Narrative</strong> — ' + text.replace(/</g,'&lt;'));
       } else {
-        throw new Error('No narrative text field found. Top-level keys: ' + Object.keys(res).join(', '));
+        const nestedKeys = (n && typeof n === 'object') ? Object.keys(n).join(', ') : '(not an object)';
+        throw new Error('narrative field exists but has no usable text. Its keys: ' + nestedKeys);
       }
       btn.textContent = 'Reload Narrative';
     }catch(err){
