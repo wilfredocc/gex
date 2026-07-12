@@ -33,6 +33,7 @@
     --indigo:#6c7aff;
     --amber:#ffb347;
     --lime:#baff5f;
+    --skyblue:#7dd3fc;
     --green:#35d488;
     --red:#ff5470;
     --mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
@@ -101,6 +102,23 @@
     font-family:var(--mono); font-size:11px; padding:4px 10px; border-radius:12px; cursor:pointer;
   }
   .wl-chip.active{ background:var(--blue-deep); border-color:var(--blue); color:#fff; }
+
+  .grew-row{
+    display:none; font-size:10px; color:var(--text-dim); font-family:var(--mono);
+    padding:5px 14px; border-bottom:1px solid var(--border-soft); background:var(--panel);
+    overflow-x:auto; white-space:nowrap; scrollbar-width:none; -ms-overflow-style:none;
+  }
+  .grew-row::-webkit-scrollbar{ display:none; height:0; }
+  .grew-row .grew-label{ color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-right:6px; }
+  .grew-row .grew-strike{ color:var(--text); font-weight:600; }
+  .grew-row .grew-up{ color:var(--blue); }
+  .grew-row .grew-down{ color:var(--orange); }
+
+  .narrative-panel{
+    font-size:12px; line-height:1.5; color:var(--text-dim); font-family:var(--sans);
+    padding:10px 14px; border-bottom:1px solid var(--border-soft); background:var(--panel);
+  }
+  .narrative-panel strong{ color:var(--text); }
   .control-group{ display:flex; align-items:center; gap:4px; flex-shrink:0; }
   .control-label{ font-family:var(--mono); font-size:9px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.4px; margin-right:1px; }
   .stepper{ display:flex; align-items:center; gap:3px; }
@@ -146,6 +164,10 @@
   .srp-btn.active{ background:var(--blue-deep); border-color:var(--blue); color:#fff; }
   table.gex-grid thead th .exp-date{ font-size:10.5px; color:var(--text); }
   table.gex-grid thead th .exp-mvc{ font-size:8px; color:var(--gold); font-weight:400; margin-top:1px; }
+  table.gex-grid thead th .opex-badge{
+    display:inline-block; font-size:7px; font-weight:700; letter-spacing:0.4px;
+    color:#3a2f0a; background:var(--gold); border-radius:3px; padding:1px 4px; margin-top:2px;
+  }
 
   table.gex-grid tbody td{
     padding:0; text-align:center; border-right:1px solid var(--border-soft);
@@ -190,6 +212,7 @@
 
   tr.magnet-row th.strike-cell{ border-left:3px solid var(--lime); }
   th.strike-cell .magnet-tag{ color:var(--lime); font-size:14px; margin-left:3px; }
+  th.strike-cell .em-tag{ color:var(--skyblue); font-size:10px; margin-left:3px; }
 
   .chg-up{ color:var(--blue); font-size:10px; margin-left:3px; }
   .chg-down{ color:var(--orange); font-size:10px; margin-left:3px; }
@@ -284,6 +307,8 @@
       <span class="mini-clock" id="lastUpdated">—</span>
       <button type="button" class="small mini" id="apiKeyBtn">API Key</button>
       <div class="metric"><div class="lbl">Net GEX</div><div class="v" id="mNetGex">—</div><div class="sub" id="mNetGexChip"></div></div>
+      <div class="metric"><div class="lbl">Building</div><div class="v pos" id="mBuildStrike">—</div></div>
+      <div class="metric"><div class="lbl">Fading</div><div class="v neg" id="mFadeStrike">—</div></div>
     </div>
     <form class="ticker-form" id="tickerForm">
       <input type="text" id="tickerInput" value="SPY" maxlength="6" autocomplete="off" spellcheck="false">
@@ -310,6 +335,7 @@
     <div class="control-group">
       <button class="small" id="loadIvBtn">Load IV / EM</button>
       <button class="small" id="loadSurgeBtn">Load Hot</button>
+      <button class="small" id="loadNarrativeBtn">Load Narrative</button>
       <div class="metric"><div class="lbl">MVC ★</div><div class="v gold" id="mMvc">—</div><div class="sub" id="mMvcSub"></div></div>
     </div>
 
@@ -329,6 +355,10 @@
     <div class="metric zdte-only" style="display:none;"><div class="lbl">Gamma Accel</div><div class="v" id="mZdteAccel">—</div></div>
   </div>
 </div>
+
+<div class="grew-row" id="grewRow"></div>
+
+<div class="narrative-panel" id="narrativePanel" style="display:none;"></div>
 
 <div class="grid-wrap" id="gridWrap">
   <div class="empty-state">
@@ -352,6 +382,8 @@
     <span>· <span style="color:var(--indigo)">⇄</span> Reversal = heaviest node on the opposite side of spot from MVC</span>
     <span>· <span style="color:var(--amber)">⚡</span> Hot = today's live-flow hot strike (tap "Load Hot")</span>
     <span>· <span style="color:var(--lime)">⊕</span> Magnet = 0DTE pin target into the close (only in 0DTE mode)</span>
+    <span>· <span style="color:var(--skyblue)">◆1x/1.5x/2x</span> = strike nearest that multiple of expected move from spot (tap "Load IV / EM")</span>
+    <span>· gold OPEX badge = monthly options expiration (3rd Friday)</span>
     <span>· <span style="color:var(--blue)">▲</span>/<span style="color:var(--orange)">▼</span>% next to a tag = that level's |GEX| change vs first snapshot today · <span style="color:var(--text-faint)">ø</span> = flat (under 3%)</span>
     <span>· tap any cell for detail</span>
   </div>
@@ -585,6 +617,14 @@
 
   // per-expiration call wall / put wall / MVC (highest |net GEX| strike), computed
   // over that expiry's FULL strike list (not just the visible/centered window)
+  // OPEX: the 3rd Friday of the month is the standard monthly options expiration.
+  function isOpexFriday(dateStr){
+    const d = new Date(dateStr + 'T12:00:00Z');
+    if(d.getUTCDay() !== 5) return false;
+    const day = d.getUTCDate();
+    return day >= 15 && day <= 21;
+  }
+
   function computeExpiryMeta(d){
     if(!d || !d.strikes || !d.strikes.length) return {callWall:null, putWall:null, mvcStrike:null, mvcAbs:0};
     let callWall=null, callWallVal=-Infinity, putWall=null, putWallVal=Infinity, mvcStrike=null, mvcAbs=-1;
@@ -790,6 +830,33 @@
     }
   }
 
+  async function loadNarrative(){
+    if(!state.ticker){ return; }
+    const btn = $('loadNarrativeBtn');
+    const origText = btn.textContent;
+    btn.textContent = 'Loading…';
+    btn.disabled = true;
+    const panel = $('narrativePanel');
+    try{
+      const res = await fa('/v1/exposure/narrative/' + encodeURIComponent(state.ticker));
+      // Response field name isn't confirmed against live data yet — try the likely
+      // candidates, and if none match, show the raw keys so we can fix it fast.
+      const text = res.narrative || res.summary || res.text || res.analysis || res.narrative_text;
+      if(typeof text === 'string' && text.length){
+        panel.style.display = 'block';
+        panel.innerHTML = '<strong>Narrative</strong> — ' + text.replace(/</g,'&lt;');
+      } else {
+        throw new Error('No narrative text field found. Top-level keys: ' + Object.keys(res).join(', '));
+      }
+      btn.textContent = 'Reload Narrative';
+    }catch(err){
+      alert('Narrative load failed: ' + err.message);
+      btn.textContent = origText;
+    }finally{
+      btn.disabled = false;
+    }
+  }
+
   function setStatus(s){
     statusDot.className = 'status-dot' + (s === 'live' ? ' live' : s === 'err' ? ' err' : '');
   }
@@ -914,12 +981,15 @@
         const dte = Math.max(dteFor(nearestExp), 0.4);
         const em = state.spot * (state.volatility.atm_iv/100) * Math.sqrt(dte/365);
         $('mEm').textContent = '±$' + em.toFixed(2);
+        state.emValue = em;
       } else {
         $('mEm').textContent = '—';
+        state.emValue = null;
       }
     } else {
       $('mIv').textContent = '— (load)';
       $('mEm').textContent = '—';
+      state.emValue = null;
     }
 
     // 0DTE-specific pills — only shown when 0DTE mode is on and the dedicated endpoint returned data
@@ -984,6 +1054,54 @@
     const netVals = strikes.map(s => Math.abs(netByStrike[s] || 0));
     const netMaxAbs = percentile(netVals, 0.92) || 1;
     const strikeBaseline = getOrSetStrikeBaseline(netByStrike);
+
+    // Biggest Building / Fading strike (largest positive / negative % change vs first snapshot today)
+    {
+      let bestBuild = null, bestBuildPct = -Infinity;
+      let bestFade = null, bestFadePct = Infinity;
+      strikes.forEach(s => {
+        const baseVal = strikeBaseline[s];
+        if(baseVal == null || Math.abs(baseVal) < 1e5) return;
+        const pct = ((Math.abs(netByStrike[s] || 0) - Math.abs(baseVal)) / Math.abs(baseVal)) * 100;
+        if(pct > bestBuildPct){ bestBuildPct = pct; bestBuild = s; }
+        if(pct < bestFadePct){ bestFadePct = pct; bestFade = s; }
+      });
+      const mBuild = $('mBuildStrike'), mFade = $('mFadeStrike');
+      if(mBuild){
+        mBuild.textContent = bestBuild != null && bestBuildPct > 3 ? '$' + formatStrike(bestBuild) + ' +' + bestBuildPct.toFixed(0) + '%' : '—';
+      }
+      if(mFade){
+        mFade.textContent = bestFade != null && bestFadePct < -3 ? '$' + formatStrike(bestFade) + ' ' + bestFadePct.toFixed(0) + '%' : '—';
+      }
+    }
+
+    // GREW: top movers ranked by raw $ magnitude change (not %), shown as before → after,
+    // matching the "since first snapshot today" framing used elsewhere.
+    {
+      const movers = [];
+      strikes.forEach(s => {
+        const baseVal = strikeBaseline[s];
+        const curVal = netByStrike[s] || 0;
+        if(baseVal == null) return;
+        const delta = Math.abs(curVal) - Math.abs(baseVal);
+        if(Math.abs(delta) < 1e6) return; // ignore noise under $1M
+        movers.push({ strike: s, before: baseVal, after: curVal, delta });
+      });
+      movers.sort((a,b) => Math.abs(b.delta) - Math.abs(a.delta));
+      const top = movers.slice(0, 3);
+      const grewEl = $('grewRow');
+      if(top.length){
+        grewEl.style.display = 'block';
+        grewEl.innerHTML = '<span class="grew-label">Grew today</span>' + top.map(m => {
+          const pct = Math.abs(m.before) > 1e5 ? (((Math.abs(m.after) - Math.abs(m.before)) / Math.abs(m.before)) * 100).toFixed(0) : null;
+          const cls = m.delta >= 0 ? 'grew-up' : 'grew-down';
+          const arrow = m.delta >= 0 ? '▲' : '▼';
+          return `<span class="grew-strike">$${formatStrike(m.strike)}</span> ${fmtMoney(m.before)} → ${fmtMoney(m.after)} <span class="${cls}">${arrow}${pct != null ? pct + '%' : ''}</span>`;
+        }).join(' &nbsp;·&nbsp; ');
+      } else {
+        grewEl.style.display = 'none';
+      }
+    }
 
     let atmStrike = null;
     if(state.spot != null && strikes.length){
@@ -1073,6 +1191,20 @@
       if(bestRun.length >= 3) voidStrikes = new Set(bestRun);
     }
 
+    // EM bands: mark the nearest visible strike to spot ± 1x/1.5x/2x the expected move.
+    const emBandStrikes = {}; // strike -> label, e.g. "1x"
+    if(state.emValue && state.spot != null && strikes.length){
+      [1, 1.5, 2].forEach(mult => {
+        [state.spot + state.emValue*mult, state.spot - state.emValue*mult].forEach(target => {
+          let best = Infinity, nearest = null;
+          strikes.forEach(s => { const diff = Math.abs(s - target); if(diff < best){ best = diff; nearest = s; } });
+          if(nearest != null && !(nearest in emBandStrikes)){
+            emBandStrikes[nearest] = mult % 1 === 0 ? mult + 'x' : mult + 'x';
+          }
+        });
+      });
+    }
+
     // per-expiration call/put wall + MVC, computed over each expiry's full chain
     const expMeta = {};
     exps.forEach(e => { expMeta[e] = computeExpiryMeta(state.gexByExp[e]); });
@@ -1087,9 +1219,14 @@
     exps.forEach(e => {
       const meta = expMeta[e];
       const mvcHtml = meta.mvcStrike != null ? `<div class="exp-mvc">MVC $${formatStrike(meta.mvcStrike)}</div>` : '';
-      const wallsHtml = (meta.callWall != null) ?
-        `<div class="exp-walls"><span class="cw">CW $${formatStrike(meta.callWall)}</span> / <span class="pw">PW $${formatStrike(meta.putWall)}</span></div>` : '';
-      html += `<th><div class="exp-date">${e}</div>${mvcHtml}${wallsHtml}</th>`;
+      let wallsHtml = '';
+      if(meta.callWall != null){
+        const cwPct = state.spot ? ' (' + (meta.callWall >= state.spot ? '+' : '') + (((meta.callWall - state.spot)/state.spot)*100).toFixed(1) + '%)' : '';
+        const pwPct = state.spot ? ' (' + (meta.putWall >= state.spot ? '+' : '') + (((meta.putWall - state.spot)/state.spot)*100).toFixed(1) + '%)' : '';
+        wallsHtml = `<div class="exp-walls"><span class="cw">CW $${formatStrike(meta.callWall)}${cwPct}</span> / <span class="pw">PW $${formatStrike(meta.putWall)}${pwPct}</span></div>`;
+      }
+      const opexHtml = isOpexFriday(e) ? '<div class="opex-badge">OPEX</div>' : '';
+      html += `<th><div class="exp-date">${e}</div>${opexHtml}${mvcHtml}${wallsHtml}</th>`;
     });
     html += '<th class="netcol-head">Net GEX by strike →</th></tr></thead><tbody>';
 
@@ -1103,10 +1240,11 @@
       const isSurge = state.surgeStrike != null && strike === state.surgeStrike;
       const isMagnet = magnetStrike != null && strike === magnetStrike;
       const isVoid = voidStrikes.has(strike);
+      const emLabel = emBandStrikes[strike];
       const isMvcRow = strike === state.mvcStrike;
-      const rowClasses = [isAtm ? 'atm-row' : '', isFlip ? 'flip-row' : '', isPin ? 'pin-row' : '', isBump ? 'bump-row' : '', isNie ? 'nie-row' : '', isReversal ? 'reversal-row' : '', isSurge ? 'surge-row' : '', isMagnet ? 'magnet-row' : '', isVoid ? 'void-row' : ''].filter(Boolean).join(' ');
+      const rowClasses = [isAtm ? 'atm-row' : '', isFlip ? 'flip-row' : '', isPin ? 'pin-row' : '', isBump ? 'bump-row' : '', isNie ? 'nie-row' : '', isReversal ? 'reversal-row' : '', isSurge ? 'surge-row' : '', isMagnet ? 'magnet-row' : '', isVoid ? 'void-row' : '', emLabel ? 'em-row' : ''].filter(Boolean).join(' ');
       const chg = pctChangeBadge(netByStrike[strike] || 0, strikeBaseline[strike]);
-      html += `<tr class="${rowClasses}"><th class="strike-cell"><div class="strike-cell-inner"><span class="strike-tags">${isMvcRow ? '<span class="mvc-star" title="MVC — largest |GEX| strike">★</span>' : ''}${isAtm ? '<span class="spot-tag" title="Spot — current price">◀</span>' : ''}${isPin ? '<span class="pin-tag" title="Pin — pin-risk target strike">◉</span>' : ''}${isBump ? '<span class="bump-tag" title="Bump — gatekeeper node between spot and MVC">‖</span>' : ''}${isNie ? '<span class="nie-tag" title="Nie — midpoint between call wall and put wall">⊙</span>' : ''}${isReversal ? '<span class="reversal-tag" title="Reversal — heaviest node opposite MVC">⇄</span>' : ''}${isSurge ? '<span class="surge-tag" title="Hot — live-flow hot strike today">⚡</span>' : ''}${isMagnet ? '<span class="magnet-tag" title="Magnet — 0DTE pin target into the close">⊕</span>' : ''}${isVoid ? '<span class="void-tag" title="Void — air pocket, thin GEX">≈</span>' : ''}${(isMvcRow||isBump||isNie||isReversal||isPin) ? chg : ''}</span><span class="strike-num">${formatStrike(strike)}</span></div></th>`;
+      html += `<tr class="${rowClasses}"><th class="strike-cell"><div class="strike-cell-inner"><span class="strike-tags">${isMvcRow ? '<span class="mvc-star" title="MVC — largest |GEX| strike">★</span>' : ''}${isAtm ? '<span class="spot-tag" title="Spot — current price">◀</span>' : ''}${isPin ? '<span class="pin-tag" title="Pin — pin-risk target strike">◉</span>' : ''}${isBump ? '<span class="bump-tag" title="Bump — gatekeeper node between spot and MVC">‖</span>' : ''}${isNie ? '<span class="nie-tag" title="Nie — midpoint between call wall and put wall">⊙</span>' : ''}${isReversal ? '<span class="reversal-tag" title="Reversal — heaviest node opposite MVC">⇄</span>' : ''}${isSurge ? '<span class="surge-tag" title="Hot — live-flow hot strike today">⚡</span>' : ''}${isMagnet ? '<span class="magnet-tag" title="Magnet — 0DTE pin target into the close">⊕</span>' : ''}${isVoid ? '<span class="void-tag" title="Void — air pocket, thin GEX">≈</span>' : ''}${emLabel ? `<span class="em-tag" title="${emLabel} expected move from spot">◆${emLabel}</span>` : ''}${(isMvcRow||isBump||isNie||isReversal||isPin) ? chg : ''}</span><span class="strike-num">${formatStrike(strike)}</span></div></th>`;
       exps.forEach(e => {
         const c = cellData[strike + '|' + e];
         if(!c){
@@ -1256,6 +1394,7 @@
 
   $('loadIvBtn').addEventListener('click', loadIv);
   $('loadSurgeBtn').addEventListener('click', loadSurge);
+  $('loadNarrativeBtn').addEventListener('click', loadNarrative);
 
   $('apiKeyBtn').addEventListener('click', () => {
     const key = prompt('FlashAlpha X-Api-Key (stored only in this browser via localStorage):', state.apiKey || '');
