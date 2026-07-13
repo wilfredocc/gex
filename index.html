@@ -115,10 +115,25 @@
   .grew-row .grew-down{ color:var(--orange); }
 
   .narrative-panel{
-    font-size:12px; line-height:1.5; color:var(--text-dim); font-family:var(--sans);
-    padding:10px 14px; border-bottom:1px solid var(--border-soft); background:var(--panel);
+    font-size:12.5px; line-height:1.65; color:var(--text); font-family:var(--sans);
+    padding:12px 34px 12px 14px; border-bottom:1px solid var(--border-soft); background:var(--panel);
+    position:relative;
   }
-  .narrative-panel strong{ color:var(--text); }
+  .narrative-panel strong{ font-weight:700; }
+  .narrative-close{
+    position:absolute; top:8px; right:8px; background:var(--panel2); border:1px solid var(--border);
+    color:var(--text-dim); font-size:12px; width:22px; height:22px; border-radius:6px;
+    line-height:1; cursor:pointer; padding:0;
+  }
+  .narrative-panel .narr-regime{ color:var(--blue); }
+  .narrative-panel .narr-gex_change{ color:var(--skyblue); }
+  .narrative-panel .narr-key_levels{ color:var(--gold); }
+  .narrative-panel .narr-flow{ color:var(--amber); }
+  .narrative-panel .narr-vanna{ color:var(--orange); }
+  .narrative-panel .narr-charm{ color:var(--rose); }
+  .narrative-panel .narr-zero_dte{ color:var(--lime); }
+  .narrative-panel .narr-outlook{ color:var(--purple); }
+  .narrative-panel .narr-default{ color:var(--cyan); }
   .control-group{ display:flex; align-items:center; gap:4px; flex-shrink:0; }
   .control-label{ font-family:var(--mono); font-size:9px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.4px; margin-right:1px; }
   .stepper{ display:flex; align-items:center; gap:3px; }
@@ -358,7 +373,10 @@
 
 <div class="grew-row" id="grewRow"></div>
 
-<div class="narrative-panel" id="narrativePanel" style="display:none;"></div>
+<div class="narrative-panel" id="narrativePanel" style="display:none;">
+  <button class="narrative-close" id="narrativeCloseBtn" title="Hide narrative">✕</button>
+  <div id="narrativeContent"></div>
+</div>
 
 <div class="grid-wrap" id="gridWrap">
   <div class="empty-state">
@@ -830,6 +848,12 @@
     }
   }
 
+  const NARRATIVE_COLOR_CLASS = {
+    regime: 'narr-regime', gex_change: 'narr-gex_change', key_levels: 'narr-key_levels',
+    flow: 'narr-flow', vanna: 'narr-vanna', charm: 'narr-charm',
+    zero_dte: 'narr-zero_dte', outlook: 'narr-outlook'
+  };
+
   async function loadNarrative(){
     if(!state.ticker){ return; }
     const btn = $('loadNarrativeBtn');
@@ -837,6 +861,7 @@
     btn.textContent = 'Loading…';
     btn.disabled = true;
     const panel = $('narrativePanel');
+    const content = $('narrativeContent');
     try{
       const res = await fa('/v1/exposure/narrative/' + encodeURIComponent(state.ticker));
       // `narrative` is confirmed to exist at the top level, but it's not a plain string —
@@ -848,17 +873,20 @@
       } else if(n && typeof n === 'object'){
         text = n.text || n.summary || n.narrative || n.content || n.full_text || n.body;
         // if it's an object of labeled sections (e.g. {accelerant: "...", flip: "..."}),
-        // join every string value found into one readable block
+        // join every string value found into one readable, color-coded block
         if(!text){
           const parts = Object.entries(n)
             .filter(([k,v]) => typeof v === 'string' && v.length)
-            .map(([k,v]) => `<strong>${k}:</strong> ${v.replace(/</g,'&lt;')}`);
-          if(parts.length) text = parts.join('<br>');
+            .map(([k,v]) => {
+              const cls = NARRATIVE_COLOR_CLASS[k] || 'narr-default';
+              return `<strong class="${cls}">${k}:</strong> ${v.replace(/</g,'&lt;')}`;
+            });
+          if(parts.length) text = parts.join('<br><br>');
         }
       }
       if(text && text.length){
         panel.style.display = 'block';
-        panel.innerHTML = text.includes('<strong>') ? text : ('<strong>Narrative</strong> — ' + text.replace(/</g,'&lt;'));
+        content.innerHTML = text.includes('<strong') ? text : ('<strong>Narrative</strong> — ' + text.replace(/</g,'&lt;'));
       } else {
         const nestedKeys = (n && typeof n === 'object') ? Object.keys(n).join(', ') : '(not an object)';
         throw new Error('narrative field exists but has no usable text. Its keys: ' + nestedKeys);
@@ -1238,7 +1266,7 @@
       if(meta.callWall != null){
         const cwPct = state.spot ? ' (' + (meta.callWall >= state.spot ? '+' : '') + (((meta.callWall - state.spot)/state.spot)*100).toFixed(1) + '%)' : '';
         const pwPct = state.spot ? ' (' + (meta.putWall >= state.spot ? '+' : '') + (((meta.putWall - state.spot)/state.spot)*100).toFixed(1) + '%)' : '';
-        wallsHtml = `<div class="exp-walls"><span class="cw">CW $${formatStrike(meta.callWall)}${cwPct}</span> / <span class="pw">PW $${formatStrike(meta.putWall)}${pwPct}</span></div>`;
+        wallsHtml = `<div class="exp-walls"><span class="cw">CW $${formatStrike(meta.callWall)}${cwPct}</span></div><div class="exp-walls"><span class="pw">PW $${formatStrike(meta.putWall)}${pwPct}</span></div>`;
       }
       const opexHtml = isOpexFriday(e) ? '<div class="opex-badge">OPEX</div>' : '';
       html += `<th><div class="exp-date">${e}</div>${opexHtml}${mvcHtml}${wallsHtml}</th>`;
@@ -1410,6 +1438,9 @@
   $('loadIvBtn').addEventListener('click', loadIv);
   $('loadSurgeBtn').addEventListener('click', loadSurge);
   $('loadNarrativeBtn').addEventListener('click', loadNarrative);
+  $('narrativeCloseBtn').addEventListener('click', () => {
+    $('narrativePanel').style.display = 'none';
+  });
 
   $('apiKeyBtn').addEventListener('click', () => {
     const key = prompt('FlashAlpha X-Api-Key (stored only in this browser via localStorage):', state.apiKey || '');
