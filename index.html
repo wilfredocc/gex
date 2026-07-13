@@ -206,8 +206,8 @@
   tr.atm-row td{ background:rgba(242,193,78,0.06); }
   table.gex-grid tbody tr.atm-row th.strike-cell{ background:#f0f0f0; color:#111; }
   table.gex-grid tbody tr.atm-row th.strike-cell .spot-tag{ color:#666; }
-  tr.flip-row th.strike-cell{ box-shadow: inset 0 1.5px 0 var(--gold), inset 0 -1.5px 0 var(--gold); }
-  tr.flip-row td{ box-shadow: inset 0 1.5px 0 rgba(242,193,78,0.55), inset 0 -1.5px 0 rgba(242,193,78,0.55); }
+  tr.flip-row th.strike-cell{ box-shadow: inset 0 1.5px 0 var(--green), inset 0 -1.5px 0 var(--green); }
+  tr.flip-row td{ box-shadow: inset 0 1.5px 0 rgba(53,212,136,0.55), inset 0 -1.5px 0 rgba(53,212,136,0.55); }
 
   tr.pin-row th.strike-cell{ border-left:3px solid var(--cyan); }
   tr.pin-row td:first-of-type{ }
@@ -390,7 +390,7 @@
   <div class="legend">
     <span><span class="legend-swatch" style="background:linear-gradient(90deg, rgba(255,138,61,0.85), rgba(255,138,61,0.08))"></span>put-dominant (negative GEX)</span>
     <span><span class="legend-swatch" style="background:linear-gradient(90deg, rgba(58,160,255,0.08), rgba(58,160,255,0.85))"></span>call-dominant (positive GEX)</span>
-    <span>· gold row = gamma flip · gold strike = ATM</span>
+    <span>· <span style="color:var(--green)">green</span> row = gamma flip · gold strike = ATM</span>
     <span>· <span style="color:var(--gold)">★</span> = MVC (largest |GEX| strike) · per-column ★ = that expiry's own MVC</span>
     <span>· <span style="color:var(--green)">▲</span>/<span style="color:var(--red)">▼</span> = OI growing/shrinking that cell</span>
     <span>· <span style="color:var(--cyan)">◉</span> Pin = pin-risk target strike</span>

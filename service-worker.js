@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gex-matrix-shell-v7';
+const CACHE_NAME = 'gex-matrix-shell-v8';
 const SHELL_FILES = [
   './index.html',
   './manifest.json',
