@@ -1123,6 +1123,42 @@
         ['SPX',  spx  != null ? spx.toLocaleString() : '—'],
         ['Term', termLabel],
       ];
+
+      // Bonus fields — same response, no extra API cost. Field names here are best-effort
+      // guesses (never confirmed live), so only surfaced when actually present, and logged
+      // to console if the whole block is a miss so the real names are one look away.
+      const fmtVolPct = v => (Math.abs(v) <= 3 ? v * 100 : v).toFixed(1) + '%';
+
+      const volObj = res.volatility;
+      if(volObj && typeof volObj === 'object'){
+        const atmIv = toNum(volObj.atm_iv ?? volObj.atmIv ?? volObj.iv);
+        const hv    = toNum(volObj.hv ?? volObj.historical_vol ?? volObj.realized_vol);
+        const vrp   = toNum(volObj.vrp ?? volObj.vol_risk_premium);
+        const skew25= toNum(volObj.skew_25d ?? volObj.skew25 ?? volObj.delta25_skew ?? volObj.risk_reversal_25d);
+        if(atmIv != null) items.push(['ATM IV', fmtVolPct(atmIv)]);
+        if(hv    != null) items.push(['HV', fmtVolPct(hv)]);
+        if(vrp   != null) items.push(['VRP', fmtVolPct(vrp)]);
+        if(skew25!= null) items.push(['25Δ Skew', skew25.toFixed(2)]);
+        if(atmIv==null && hv==null && vrp==null && skew25==null){
+          console.warn('[GEX] summary.volatility had no recognized fields. Keys:', Object.keys(volObj).join(', '));
+        }
+      }
+
+      const flowObj = res.options_flow;
+      if(flowObj && typeof flowObj === 'object'){
+        const pcr     = toNum(flowObj.put_call_ratio ?? flowObj.pcr);
+        const callOi  = toNum(flowObj.call_oi ?? flowObj.call_open_interest);
+        const putOi   = toNum(flowObj.put_oi ?? flowObj.put_open_interest);
+        const netFlow = toNum(flowObj.net_flow ?? flowObj.dealer_flow ?? flowObj.net_premium);
+        if(pcr     != null) items.push(['P/C Ratio', pcr.toFixed(2)]);
+        if(callOi  != null) items.push(['Call OI', callOi.toLocaleString()]);
+        if(putOi   != null) items.push(['Put OI', putOi.toLocaleString()]);
+        if(netFlow != null) items.push(['Net Flow', (netFlow >= 0 ? '+' : '') + netFlow.toLocaleString()]);
+        if(pcr==null && callOi==null && putOi==null && netFlow==null){
+          console.warn('[GEX] summary.options_flow had no recognized fields. Keys:', Object.keys(flowObj).join(', '));
+        }
+      }
+
       const rowsHtml = items.map(([lbl,v]) =>
         [lbl, escapeHtml(String(v))]
       );
