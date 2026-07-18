@@ -119,8 +119,8 @@
   .grew-row .grew-down{ color:var(--orange); }
 
   .narrative-panel{
-    font-size:12.5px; line-height:1.65; color:var(--text); font-family:var(--sans);
-    padding:12px 34px 12px 14px; border-bottom:1px solid var(--border-soft); background:var(--panel);
+    font-size:12px; line-height:1.5; color:var(--text); font-family:var(--sans);
+    padding:10px 34px 10px 14px; border-bottom:1px solid var(--border-soft); background:var(--panel);
     position:relative;
   }
   .narrative-panel strong{ font-weight:700; }
@@ -129,6 +129,11 @@
     color:var(--text-dim); font-size:12px; width:22px; height:22px; border-radius:6px;
     line-height:1; cursor:pointer; padding:0;
   }
+  .narr-grid{ display:grid; grid-template-columns:1fr; gap:6px; }
+  .narr-item{ background:var(--panel2); border:1px solid var(--border-soft); border-radius:7px; padding:6px 9px; }
+  .narr-label{ font-family:var(--mono); font-size:9.5px; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:2px; }
+  .narr-text{ color:var(--text-dim); font-size:12px; line-height:1.4; }
+  .narr-freeform{ line-height:1.6; }
   .narrative-panel .narr-regime{ color:var(--blue); }
   .narrative-panel .narr-gex_change{ color:var(--skyblue); }
   .narrative-panel .narr-key_levels{ color:var(--gold); }
@@ -277,6 +282,7 @@
   table.gex-grid thead th .exp-walls{ font-size:9px; margin-top:1px; }
   table.gex-grid thead th .exp-walls .cw{ color:var(--blue); }
   table.gex-grid thead th .exp-walls .pw{ color:var(--orange); }
+  table.gex-grid thead th .exp-flip{ font-size:9px; margin-top:1px; color:var(--green); }
   .metric .sub.chip{ font-weight:600; }
 
   .netcol-head{ min-width:96px !important; }
@@ -382,6 +388,14 @@
     .watchlist-row{ display:none !important; }
     /* macro data now lives in the rail on desktop — the horizontal bar would be redundant */
     .macro-panel{ display:none !important; }
+
+    .narr-grid{ grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:8px; }
+
+    table.gex-grid thead th{ padding:7px 9px; }
+    table.gex-grid thead th .exp-date{ font-size:12.5px; }
+    table.gex-grid thead th .exp-mvc{ font-size:11px; }
+    table.gex-grid thead th .exp-walls{ font-size:11px; }
+    table.gex-grid thead th .exp-flip{ font-size:11px; }
 
     .controls-row{ flex-wrap:wrap; overflow-x:visible; }
     table.gex-grid{ font-size:11.5px; }
@@ -790,7 +804,7 @@
   }
 
   function computeExpiryMeta(d){
-    if(!d || !d.strikes || !d.strikes.length) return {callWall:null, putWall:null, mvcStrike:null, mvcAbs:0};
+    if(!d || !d.strikes || !d.strikes.length) return {callWall:null, putWall:null, mvcStrike:null, mvcAbs:0, flipStrike:null};
     let callWall=null, callWallVal=-Infinity, putWall=null, putWallVal=Infinity, mvcStrike=null, mvcAbs=-1;
     d.strikes.forEach(s => {
       const ng = s.net_gex || 0;
@@ -798,7 +812,22 @@
       if(ng < putWallVal){ putWallVal = ng; putWall = s.strike; }
       if(Math.abs(ng) > mvcAbs){ mvcAbs = Math.abs(ng); mvcStrike = s.strike; }
     });
-    return {callWall, putWall, mvcStrike, mvcAbs};
+
+    // Per-expiration gamma flip: nearest strike where net GEX crosses zero as strikes ascend.
+    // This is a local zero-crossing computed from this column's own data — distinct from the
+    // single ticker-wide flip value the API returns via /v1/exposure/levels.
+    let flipStrike = null;
+    const sorted = d.strikes.slice().sort((a, b) => a.strike - b.strike);
+    for(let i = 1; i < sorted.length; i++){
+      const prev = sorted[i-1].net_gex || 0;
+      const cur = sorted[i].net_gex || 0;
+      if(prev !== 0 && cur !== 0 && ((prev < 0 && cur > 0) || (prev > 0 && cur < 0))){
+        flipStrike = Math.abs(prev) < Math.abs(cur) ? sorted[i-1].strike : sorted[i].strike;
+        break;
+      }
+    }
+
+    return {callWall, putWall, mvcStrike, mvcAbs, flipStrike};
   }
 
   // session baseline (first snapshot of the day for this ticker) for build/fade chip
@@ -1135,26 +1164,30 @@
       // `narrative` is confirmed to exist at the top level, but it's not a plain string —
       // it's a nested object. Try common nested field names before giving up.
       let text = null;
+      let structured = false;
       const n = res.narrative;
       if(typeof n === 'string'){
         text = n;
       } else if(n && typeof n === 'object'){
         text = n.text || n.summary || n.narrative || n.content || n.full_text || n.body;
         // if it's an object of labeled sections (e.g. {accelerant: "...", flip: "..."}),
-        // join every string value found into one readable, color-coded block
+        // render each as its own compact card instead of one long wall of text
         if(!text){
           const parts = Object.entries(n)
             .filter(([k,v]) => typeof v === 'string' && v.length)
             .map(([k,v]) => {
               const cls = NARRATIVE_COLOR_CLASS[k] || 'narr-default';
-              return `<strong class="${cls}">${k}:</strong> ${v.replace(/</g,'&lt;')}`;
+              const label = k.replace(/_/g, ' ');
+              return `<div class="narr-item"><div class="narr-label ${cls}">${escapeHtml(label)}</div><div class="narr-text">${v.replace(/</g,'&lt;')}</div></div>`;
             });
-          if(parts.length) text = parts.join('<br><br>');
+          if(parts.length){ text = parts.join(''); structured = true; }
         }
       }
       if(text && text.length){
         panel.style.display = 'block';
-        content.innerHTML = text.includes('<strong') ? text : ('<strong>Narrative</strong> — ' + text.replace(/</g,'&lt;'));
+        content.innerHTML = structured
+          ? `<div class="narr-grid">${text}</div>`
+          : `<div class="narr-freeform"><strong>Narrative</strong> — ${text.replace(/</g,'&lt;')}</div>`;
       } else {
         const nestedKeys = (n && typeof n === 'object') ? Object.keys(n).join(', ') : '(not an object)';
         throw new Error('narrative field exists but has no usable text. Its keys: ' + nestedKeys);
@@ -1537,7 +1570,8 @@
         wallsHtml = `<div class="exp-walls"><span class="cw">CW $${formatStrike(meta.callWall)}${cwPct}</span></div><div class="exp-walls"><span class="pw">PW $${formatStrike(meta.putWall)}${pwPct}</span></div>`;
       }
       const opexHtml = isOpexFriday(e) ? '<div class="opex-badge">OPEX</div>' : '';
-      html += `<th><div class="exp-date">${e}</div>${opexHtml}${mvcHtml}${wallsHtml}</th>`;
+      const flipHtml = meta.flipStrike != null ? `<div class="exp-flip">Flip $${formatStrike(meta.flipStrike)}</div>` : '';
+      html += `<th><div class="exp-date">${e}</div>${opexHtml}${mvcHtml}${wallsHtml}${flipHtml}</th>`;
     });
     html += '<th class="netcol-head">Net GEX by strike →</th></tr></thead><tbody>';
 
