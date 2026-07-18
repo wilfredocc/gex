@@ -1623,9 +1623,16 @@
       const isVoid = voidStrikes.has(strike);
       const emLabel = emBandStrikes[strike];
       const isMvcRow = strike === state.mvcStrike;
+      // Show the vs-open change badge on every strike inside the expected-move range
+      // (spot ± 1.2x EM), not just the handful of tagged special strikes — this is what
+      // matters for intraday level-tracking during the session.
+      const EM_RANGE_MULT = 1.2;
+      const isInEmRange = (state.emValue != null && state.spot != null)
+        ? Math.abs(strike - state.spot) <= state.emValue * EM_RANGE_MULT
+        : false;
       const rowClasses = [isAtm ? 'atm-row' : '', isFlip ? 'flip-row' : '', isPin ? 'pin-row' : '', isBump ? 'bump-row' : '', isNie ? 'nie-row' : '', isReversal ? 'reversal-row' : '', isSurge ? 'surge-row' : '', isMagnet ? 'magnet-row' : '', isVoid ? 'void-row' : '', emLabel ? 'em-row' : ''].filter(Boolean).join(' ');
       const chg = pctChangeBadge(netByStrike[strike] || 0, strikeBaseline[strike]);
-      html += `<tr class="${rowClasses}"><th class="strike-cell"><div class="strike-cell-inner"><span class="strike-tags">${isMvcRow ? '<span class="mvc-star" title="MVC — largest |GEX| strike">★</span>' : ''}${isAtm ? '<span class="spot-tag" title="Spot — current price">◀</span>' : ''}${isPin ? '<span class="pin-tag" title="Pin — pin-risk target strike">◉</span>' : ''}${isBump ? '<span class="bump-tag" title="Bump — gatekeeper node between spot and MVC">‖</span>' : ''}${isNie ? '<span class="nie-tag" title="Nie — midpoint between call wall and put wall">⊙</span>' : ''}${isReversal ? '<span class="reversal-tag" title="Reversal — heaviest node opposite MVC">⇄</span>' : ''}${isSurge ? '<span class="surge-tag" title="Hot — live-flow hot strike today">⚡</span>' : ''}${isMagnet ? '<span class="magnet-tag" title="Magnet — 0DTE pin target into the close">⊕</span>' : ''}${isVoid ? '<span class="void-tag" title="Void — air pocket, thin GEX">≈</span>' : ''}${emLabel ? `<span class="em-tag" title="${emLabel} expected move from spot">◆${emLabel}</span>` : ''}${(isMvcRow||isBump||isNie||isReversal||isPin) ? chg : ''}</span><span class="strike-num">${formatStrike(strike)}</span></div></th>`;
+      html += `<tr class="${rowClasses}"><th class="strike-cell"><div class="strike-cell-inner"><span class="strike-tags">${isMvcRow ? '<span class="mvc-star" title="MVC — largest |GEX| strike">★</span>' : ''}${isAtm ? '<span class="spot-tag" title="Spot — current price">◀</span>' : ''}${isPin ? '<span class="pin-tag" title="Pin — pin-risk target strike">◉</span>' : ''}${isBump ? '<span class="bump-tag" title="Bump — gatekeeper node between spot and MVC">‖</span>' : ''}${isNie ? '<span class="nie-tag" title="Nie — midpoint between call wall and put wall">⊙</span>' : ''}${isReversal ? '<span class="reversal-tag" title="Reversal — heaviest node opposite MVC">⇄</span>' : ''}${isSurge ? '<span class="surge-tag" title="Hot — live-flow hot strike today">⚡</span>' : ''}${isMagnet ? '<span class="magnet-tag" title="Magnet — 0DTE pin target into the close">⊕</span>' : ''}${isVoid ? '<span class="void-tag" title="Void — air pocket, thin GEX">≈</span>' : ''}${emLabel ? `<span class="em-tag" title="${emLabel} expected move from spot">◆${emLabel}</span>` : ''}${(isMvcRow||isBump||isNie||isReversal||isPin||isInEmRange) ? chg : ''}</span><span class="strike-num">${formatStrike(strike)}</span></div></th>`;
       exps.forEach(e => {
         const c = cellData[strike + '|' + e];
         if(!c){
