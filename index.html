@@ -1060,7 +1060,8 @@
       // Confirmed shape: res.vix_term_structure = { levels:{vix9d,vix,vix3m,vix6m}, near_slope_pct, structure }
       // VIX itself lives inside that nested object, not as a top-level field.
       const container = res.macro || res.macro_context || res.market || res.market_context || res.context || res;
-      const termObj = res.vix_term_structure || res.term_structure || res.vix_term || res.termStructure;
+      const termObj = container.vix_term_structure || container.term_structure || container.vix_term || container.termStructure
+        || res.vix_term_structure || res.term_structure || res.vix_term || res.termStructure;
 
       const vix  = toNum(termObj && termObj.levels && termObj.levels.vix);
       const vvix = toNum(pickField(container, MACRO_FIELD_ALIASES.vvix));
@@ -1081,7 +1082,8 @@
       const found = [vix, vvix, skew, move, spx].some(v => v !== null) || termLabel !== '—';
       if(!found){
         const topKeys = Object.keys(res).join(', ');
-        throw new Error('No recognizable macro fields (vix_term_structure/vvix/skew/move/spx). Top-level keys: ' + topKeys);
+        const macroKeys = (container !== res) ? Object.keys(container).join(', ') : '(no separate macro/market container found)';
+        throw new Error('No recognizable macro fields (vix_term_structure/vvix/skew/move/spx). Top-level keys: ' + topKeys + '. Macro container keys: ' + macroKeys);
       }
 
       const items = [
