@@ -346,9 +346,9 @@
     .app-main{ flex:1; min-width:0; }
 
     .app-rail{
-      display:flex; flex-direction:column; width:210px; flex-shrink:0;
+      display:flex; flex-direction:column; width:190px; flex-shrink:0;
       background:var(--panel); border-right:1px solid var(--border);
-      padding:14px 10px; gap:10px; overflow-y:auto;
+      padding:14px 10px; gap:6px; overflow-y:auto;
     }
     .rail-title{
       font-family:var(--mono); font-size:10px; color:var(--text-faint);
@@ -361,10 +361,27 @@
       cursor:pointer; text-align:left; width:100%;
     }
     .rail-chip.active{ background:var(--blue-deep); border-color:var(--blue); color:#fff; }
-    .rail-empty{ font-family:var(--mono); font-size:10px; color:var(--text-faint); padding:2px 4px; }
+    .rail-empty{ font-family:var(--mono); font-size:10px; color:var(--text-faint); padding:2px 4px; line-height:1.4; }
+
+    .rail-macro-grid{ display:flex; flex-direction:column; gap:3px; padding:0 2px; }
+    .rail-macro-item{
+      display:flex; justify-content:space-between; align-items:baseline;
+      font-family:var(--mono); font-size:11.5px; padding:3px 4px;
+      border-bottom:1px solid var(--border-soft);
+    }
+    .rail-macro-item .lbl{ color:var(--text-faint); font-size:10px; }
+    .rail-macro-item .v{ color:var(--skyblue); font-weight:600; }
+
+    /* pushed to the bottom of the rail so the sidebar never reads as dead empty space */
+    .rail-footer{
+      margin-top:auto; font-family:var(--mono); font-size:10px; color:var(--text-faint);
+      padding:8px 4px 2px; border-top:1px solid var(--border-soft);
+    }
 
     /* the mobile horizontal chip strip is replaced by the rail on desktop */
     .watchlist-row{ display:none !important; }
+    /* macro data now lives in the rail on desktop — the horizontal bar would be redundant */
+    .macro-panel{ display:none !important; }
 
     .controls-row{ flex-wrap:wrap; overflow-x:visible; }
     table.gex-grid{ font-size:11.5px; }
@@ -385,6 +402,11 @@
   <div class="app-rail" id="appRail">
     <div class="rail-title">Watchlist</div>
     <div class="rail-list" id="railList"></div>
+
+    <div class="rail-title" style="margin-top:14px;">Macro</div>
+    <div class="rail-macro-grid" id="macroRailGrid"><div class="rail-empty">Tap "Load Macro" above.</div></div>
+
+    <div class="rail-footer" id="railFooter"></div>
   </div>
   <div class="app-main">
 
@@ -652,6 +674,8 @@
     if(remaining < 200) cls = 'crit'; else if(remaining < 600) cls = 'warn';
     const capLabel = (state.dailyCapConfirmed ? DAILY_CAP : ('~' + DAILY_CAP));
     budgetReadout.innerHTML = `req today: <span class="${cls}">${state.requestCount}/${capLabel}</span> · ~${estimateSnapCost()}/snap`;
+    const rf = document.getElementById('railFooter');
+    if(rf) rf.innerHTML = `<span class="${cls}">${state.requestCount}/${capLabel}</span> req today<br>~${estimateSnapCost()} per snap`;
   }
   function estimateSnapCost(){
     const n = state.manualPick ? state.manualPick.length : (state.selectedExpirations.length || 5);
@@ -1006,12 +1030,10 @@
   }
 
   const MACRO_FIELD_ALIASES = {
-    vix:  ['vix','VIX'],
     vvix: ['vvix','VVIX'],
     skew: ['skew','SKEW','skew_index'],
     move: ['move','MOVE','move_index'],
     spx:  ['spx','SPX','spx_price'],
-    term: ['vix_term_structure','term_structure','vix_term','termStructure'],
   };
   function pickField(obj, names){
     if(!obj) return undefined;
@@ -1019,6 +1041,12 @@
       if(obj[n] !== undefined && obj[n] !== null) return obj[n];
     }
     return undefined;
+  }
+  // Only ever returns a real number or null — never lets a bad field render as "NaN".
+  function toNum(v){
+    if(typeof v === 'number' && !Number.isNaN(v)) return v;
+    if(typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) return Number(v);
+    return null;
   }
 
   async function loadMacro(){
@@ -1029,34 +1057,53 @@
     btn.disabled = true;
     try{
       const res = await fa('/v1/stock/' + encodeURIComponent(state.ticker) + '/summary');
-      // Macro context might sit at the top level or nested under a container key —
-      // try likely nesting first, then fall back to searching the top level directly.
+      // Confirmed shape: res.vix_term_structure = { levels:{vix9d,vix,vix3m,vix6m}, near_slope_pct, structure }
+      // VIX itself lives inside that nested object, not as a top-level field.
       const container = res.macro || res.macro_context || res.market || res.market_context || res.context || res;
-      const vix  = pickField(container, MACRO_FIELD_ALIASES.vix);
-      const vvix = pickField(container, MACRO_FIELD_ALIASES.vvix);
-      const skew = pickField(container, MACRO_FIELD_ALIASES.skew);
-      const move = pickField(container, MACRO_FIELD_ALIASES.move);
-      const spx  = pickField(container, MACRO_FIELD_ALIASES.spx);
-      const term = pickField(container, MACRO_FIELD_ALIASES.term);
+      const termObj = res.vix_term_structure || res.term_structure || res.vix_term || res.termStructure;
 
-      const found = [vix, vvix, skew, move, spx, term].some(v => v !== undefined);
+      const vix  = toNum(termObj && termObj.levels && termObj.levels.vix);
+      const vvix = toNum(pickField(container, MACRO_FIELD_ALIASES.vvix));
+      const skew = toNum(pickField(container, MACRO_FIELD_ALIASES.skew));
+      const move = toNum(pickField(container, MACRO_FIELD_ALIASES.move));
+      const spx  = toNum(pickField(container, MACRO_FIELD_ALIASES.spx));
+
+      let termLabel = '—';
+      if(termObj && typeof termObj === 'object'){
+        const structure = termObj.structure ? String(termObj.structure) : null;
+        const slope = toNum(termObj.near_slope_pct);
+        if(structure){
+          termLabel = structure.charAt(0).toUpperCase() + structure.slice(1);
+          if(slope != null) termLabel += ` (${slope > 0 ? '+' : ''}${slope.toFixed(1)}%)`;
+        }
+      }
+
+      const found = [vix, vvix, skew, move, spx].some(v => v !== null) || termLabel !== '—';
       if(!found){
         const topKeys = Object.keys(res).join(', ');
-        const nestedKeys = (container !== res) ? Object.keys(container).join(', ') : '(no nested container found)';
-        throw new Error('No recognizable macro fields (vix/vvix/skew/move/spx/term). Top-level keys: ' + topKeys + '. Nested keys tried: ' + nestedKeys);
+        throw new Error('No recognizable macro fields (vix_term_structure/vvix/skew/move/spx). Top-level keys: ' + topKeys);
       }
 
       const items = [
-        ['VIX',  vix  != null ? Number(vix).toFixed(2)  : '—'],
-        ['VVIX', vvix != null ? Number(vvix).toFixed(2) : '—'],
-        ['SKEW', skew != null ? Number(skew).toFixed(1) : '—'],
-        ['MOVE', move != null ? Number(move).toFixed(2) : '—'],
-        ['SPX',  spx  != null ? Number(spx).toLocaleString() : '—'],
-        ['Term', typeof term === 'string' ? term : (term != null ? JSON.stringify(term) : '—')],
+        ['VIX',  vix  != null ? vix.toFixed(2)  : '—'],
+        ['VVIX', vvix != null ? vvix.toFixed(2) : '—'],
+        ['SKEW', skew != null ? skew.toFixed(1) : '—'],
+        ['MOVE', move != null ? move.toFixed(2) : '—'],
+        ['SPX',  spx  != null ? spx.toLocaleString() : '—'],
+        ['Term', termLabel],
       ];
-      $('macroGrid').innerHTML = items.map(([lbl,v]) =>
-        `<div class="macro-item"><div class="lbl">${lbl}</div><div class="v">${escapeHtml(String(v))}</div></div>`
+      const rowsHtml = items.map(([lbl,v]) =>
+        [lbl, escapeHtml(String(v))]
+      );
+      $('macroGrid').innerHTML = rowsHtml.map(([lbl,v]) =>
+        `<div class="macro-item"><div class="lbl">${lbl}</div><div class="v">${v}</div></div>`
       ).join('');
+      const railGrid = document.getElementById('macroRailGrid');
+      if(railGrid){
+        railGrid.innerHTML = rowsHtml.map(([lbl,v]) =>
+          `<div class="rail-macro-item"><span class="lbl">${lbl}</span><span class="v">${v}</span></div>`
+        ).join('');
+      }
       $('macroPanel').style.display = 'flex';
       btn.textContent = 'Reload Macro';
     }catch(err){
