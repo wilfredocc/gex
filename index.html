@@ -44,7 +44,11 @@
     margin:0; padding:0; background:var(--bg); color:var(--text);
     font-family:var(--sans); height:100%; overflow:hidden;
   }
-  body{ display:flex; flex-direction:column; height:100vh; }
+
+  /* ---------- App shell (mobile default: single column, unchanged behavior) ---------- */
+  .app-shell{ display:flex; flex-direction:column; height:100vh; }
+  .app-rail{ display:none; } /* desktop-only watchlist rail, see media query below */
+  .app-main{ display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
 
   /* ---------- Header ---------- */
   header{
@@ -134,6 +138,31 @@
   .narrative-panel .narr-zero_dte{ color:var(--lime); }
   .narrative-panel .narr-outlook{ color:var(--purple); }
   .narrative-panel .narr-default{ color:var(--cyan); }
+
+  /* ---------- Macro context panel ---------- */
+  .macro-panel{
+    display:none; padding:10px 34px 10px 14px; border-bottom:1px solid var(--border-soft);
+    background:var(--panel); position:relative;
+  }
+  .macro-grid{ display:flex; flex-wrap:wrap; gap:8px; }
+  .macro-item{
+    background:var(--panel2); border:1px solid var(--border); border-radius:8px;
+    padding:5px 10px; display:flex; align-items:baseline; gap:6px;
+  }
+  .macro-item .lbl{ font-size:9px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; font-family:var(--mono); }
+  .macro-item .v{ font-family:var(--mono); font-size:12.5px; font-weight:600; color:var(--skyblue); }
+
+  /* ---------- Zero-data diagnostic banner ---------- */
+  .zero-data-notice{
+    display:none; align-items:center; justify-content:space-between; gap:10px;
+    background:rgba(255,138,61,0.12); border-bottom:1px solid var(--orange-deep);
+    color:var(--text); font-size:11.5px; font-family:var(--sans); line-height:1.5;
+    padding:9px 14px; flex-shrink:0;
+  }
+  .zero-data-notice button{
+    background:transparent; border:1px solid var(--border); color:var(--text-dim);
+    font-size:11px; width:22px; height:22px; padding:0; border-radius:6px; flex-shrink:0; cursor:pointer;
+  }
   .control-group{ display:flex; align-items:center; gap:4px; flex-shrink:0; }
   .control-label{ font-family:var(--mono); font-size:9px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.4px; margin-right:1px; }
   .stepper{ display:flex; align-items:center; gap:3px; }
@@ -310,9 +339,54 @@
   ::-webkit-scrollbar-track{ background:var(--bg); }
   ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:5px; }
   ::-webkit-scrollbar-thumb:hover{ background:var(--text-faint); }
+
+  /* ---------- Desktop terminal layout ---------- */
+  @media (min-width: 900px){
+    .app-shell{ flex-direction:row; }
+    .app-main{ flex:1; min-width:0; }
+
+    .app-rail{
+      display:flex; flex-direction:column; width:210px; flex-shrink:0;
+      background:var(--panel); border-right:1px solid var(--border);
+      padding:14px 10px; gap:10px; overflow-y:auto;
+    }
+    .rail-title{
+      font-family:var(--mono); font-size:10px; color:var(--text-faint);
+      text-transform:uppercase; letter-spacing:0.6px; padding:0 4px;
+    }
+    .rail-list{ display:flex; flex-direction:column; gap:5px; }
+    .rail-chip{
+      background:var(--panel2); border:1px solid var(--border); color:var(--text-dim);
+      font-family:var(--mono); font-size:12px; padding:7px 10px; border-radius:6px;
+      cursor:pointer; text-align:left; width:100%;
+    }
+    .rail-chip.active{ background:var(--blue-deep); border-color:var(--blue); color:#fff; }
+    .rail-empty{ font-family:var(--mono); font-size:10px; color:var(--text-faint); padding:2px 4px; }
+
+    /* the mobile horizontal chip strip is replaced by the rail on desktop */
+    .watchlist-row{ display:none !important; }
+
+    .controls-row{ flex-wrap:wrap; overflow-x:visible; }
+    table.gex-grid{ font-size:11.5px; }
+
+    /* detail panel becomes a right-anchored slide-in instead of a bottom sheet */
+    .detail-panel{
+      left:auto; right:0; top:0; bottom:0; width:360px; max-height:none;
+      border-top:none; border-left:1px solid var(--border);
+      transform:translateX(100%); transition:transform .18s ease-out;
+    }
+    .detail-panel.open{ transform:translateX(0); }
+  }
 </style>
 </head>
 <body>
+
+<div class="app-shell">
+  <div class="app-rail" id="appRail">
+    <div class="rail-title">Watchlist</div>
+    <div class="rail-list" id="railList"></div>
+  </div>
+  <div class="app-main">
 
 <header>
   <div class="brand-row">
@@ -351,6 +425,7 @@
       <button class="small" id="loadIvBtn">Load IV / EM</button>
       <button class="small" id="loadSurgeBtn">Load Hot</button>
       <button class="small" id="loadNarrativeBtn">Load Narrative</button>
+      <button class="small" id="loadMacroBtn">Load Macro</button>
       <div class="metric"><div class="lbl">MVC ★</div><div class="v gold" id="mMvc">—</div><div class="sub" id="mMvcSub"></div></div>
     </div>
 
@@ -373,10 +448,17 @@
 
 <div class="grew-row" id="grewRow"></div>
 
+<div class="macro-panel" id="macroPanel" style="display:none;">
+  <button class="narrative-close" id="macroCloseBtn" title="Hide macro">✕</button>
+  <div class="macro-grid" id="macroGrid"></div>
+</div>
+
 <div class="narrative-panel" id="narrativePanel" style="display:none;">
   <button class="narrative-close" id="narrativeCloseBtn" title="Hide narrative">✕</button>
   <div id="narrativeContent"></div>
 </div>
+
+<div class="zero-data-notice" id="zeroDataNotice" style="display:none;"></div>
 
 <div class="grid-wrap" id="gridWrap">
   <div class="empty-state">
@@ -407,6 +489,9 @@
   </div>
 </details>
 
+  </div>
+</div>
+
 <div class="detail-panel" id="detailPanel">
   <div class="dp-head">
     <div class="dp-title" id="dpTitle">—</div>
@@ -431,7 +516,7 @@
   'use strict';
 
   const BASE = 'https://lab.flashalpha.com';
-  const DAILY_CAP = 2400;
+  let DAILY_CAP = 2400; // fallback estimate until /v1/account confirms the real plan limit
   const MIN_SNAP_INTERVAL_MS = 15000;
   const REQ_TIMEOUT_MS = 12000;
 
@@ -465,6 +550,7 @@
     spot: null,
     lastSnap: null,
     requestCount: parseInt(localStorage.getItem(todayKey()) || '0', 10),
+    dailyCapConfirmed: false,
     ivLoaded: false,
     surgeStrike: null,
     surgeLoaded: false,
@@ -499,31 +585,45 @@
     btn.textContent = isFav ? '★' : '☆';
     btn.classList.toggle('active', isFav);
   }
+  function selectTicker(t){
+    tickerInput.value = t;
+    state.ticker = t;
+    state.allExpirations = [];
+    state.manualPick = null;
+    savePrefs();
+    updateFavBtn();
+    renderWatchlist();
+    runSnap(false);
+  }
+
   function renderWatchlist(){
     const list = loadWatchlist();
     const row = $('watchlistRow');
     if(!list.length){
       row.style.display = 'none';
       row.innerHTML = '';
-      return;
-    }
-    row.style.display = 'flex';
-    row.innerHTML = list.map(t =>
-      `<button class="wl-chip${t === state.ticker ? ' active' : ''}" data-ticker="${t}">${t}</button>`
-    ).join('');
-    row.querySelectorAll('.wl-chip').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const t = btn.dataset.ticker;
-        tickerInput.value = t;
-        state.ticker = t;
-        state.allExpirations = [];
-        state.manualPick = null;
-        savePrefs();
-        updateFavBtn();
-        renderWatchlist();
-        runSnap(false);
+    } else {
+      row.style.display = 'flex';
+      row.innerHTML = list.map(t =>
+        `<button class="wl-chip${t === state.ticker ? ' active' : ''}" data-ticker="${t}">${t}</button>`
+      ).join('');
+      row.querySelectorAll('.wl-chip').forEach(btn => {
+        btn.addEventListener('click', () => selectTicker(btn.dataset.ticker));
       });
-    });
+    }
+
+    // Desktop rail — same list, vertical layout, independent of the mobile chip strip above.
+    const rail = $('railList');
+    if(!list.length){
+      rail.innerHTML = '<div class="rail-empty">No favorites yet — tap ☆ next to a ticker to pin it here.</div>';
+    } else {
+      rail.innerHTML = list.map(t =>
+        `<button class="rail-chip${t === state.ticker ? ' active' : ''}" data-ticker="${t}">${t}</button>`
+      ).join('');
+      rail.querySelectorAll('.rail-chip').forEach(btn => {
+        btn.addEventListener('click', () => selectTicker(btn.dataset.ticker));
+      });
+    }
   }
 
   const $ = (id) => document.getElementById(id);
@@ -550,7 +650,8 @@
     const remaining = DAILY_CAP - state.requestCount;
     let cls = '';
     if(remaining < 200) cls = 'crit'; else if(remaining < 600) cls = 'warn';
-    budgetReadout.innerHTML = `req today: <span class="${cls}">${state.requestCount}/${DAILY_CAP}</span> · ~${estimateSnapCost()}/snap`;
+    const capLabel = (state.dailyCapConfirmed ? DAILY_CAP : ('~' + DAILY_CAP));
+    budgetReadout.innerHTML = `req today: <span class="${cls}">${state.requestCount}/${capLabel}</span> · ~${estimateSnapCost()}/snap`;
   }
   function estimateSnapCost(){
     const n = state.manualPick ? state.manualPick.length : (state.selectedExpirations.length || 5);
@@ -584,6 +685,27 @@
       return await res.json();
     } finally {
       clearTimeout(t);
+    }
+  }
+
+  async function loadAccountQuota(){
+    if(!state.apiKey) return;
+    try{
+      const acct = await fa('/v1/account');
+      // Field name isn't confirmed yet — try the documented name plus common variants
+      // before giving up and keeping the guessed default.
+      const guess = acct.daily_limit ?? acct.dailyLimit ?? acct.requests_per_day
+        ?? acct.daily_cap ?? acct.rate_limit_daily
+        ?? (acct.limits && (acct.limits.daily ?? acct.limits.daily_limit));
+      if(typeof guess === 'number' && guess > 0){
+        DAILY_CAP = guess;
+        state.dailyCapConfirmed = true;
+        renderBudget();
+      } else {
+        console.warn('[GEX] /v1/account had no recognizable daily-limit field. Top-level keys:', Object.keys(acct).join(', '));
+      }
+    }catch(err){
+      console.warn('[GEX] /v1/account fetch failed, keeping estimated cap:', err.message);
     }
   }
 
@@ -696,6 +818,36 @@
     return `<span class="chg-down">▼${Math.abs(pct).toFixed(0)}%</span>`;
   }
 
+  function hideZeroDataNotice(){
+    const el = $('zeroDataNotice');
+    if(el) el.style.display = 'none';
+  }
+
+  function checkAllZeroGex(byExp){
+    const notice = $('zeroDataNotice');
+    if(!notice) return;
+    const allStrikes = Object.values(byExp).flatMap(d => (d && d.strikes) || []);
+    if(!allStrikes.length){
+      notice.style.display = 'none';
+      return;
+    }
+    const allZero = allStrikes.every(s => !s.net_gex);
+    if(!allZero){
+      notice.style.display = 'none';
+      return;
+    }
+    const sampleKeys = Object.keys(allStrikes[0]).join(', ');
+    const isWeekend = [0, 6].includes(new Date().getDay());
+    notice.innerHTML =
+      `<span>Every strike came back with $0 GEX across ${Object.keys(byExp).length} expiration(s).` +
+      (isWeekend
+        ? ` It's the weekend — this is most likely stale/no-data from a closed market, not a bug. Re-check during trading hours.`
+        : ` Markets should be open — this looks like a field-name mismatch. Sample strike keys: ${escapeHtml(sampleKeys)}.`) +
+      `</span><button id="zeroDataDismiss" title="Dismiss">✕</button>`;
+    notice.style.display = 'flex';
+    $('zeroDataDismiss').addEventListener('click', hideZeroDataNotice);
+  }
+
   async function runSnap(isPoll){
     if(state.busy) return;
     if(!state.ticker) return;
@@ -731,6 +883,11 @@
       });
       state.gexByExp = byExp;
       state.spot = spot;
+
+      // Diagnostic: if every strike across every loaded expiration is exactly 0,
+      // that's either a no-fresh-data day (weekend/holiday) or a field-name mismatch —
+      // surface which, instead of silently rendering a grid full of $0.
+      checkAllZeroGex(byExp);
 
       try{
         const lvl = await fa('/v1/exposure/levels/' + encodeURIComponent(state.ticker));
@@ -844,6 +1001,68 @@
       alert('Hot load failed: ' + err.message);
     }finally{
       btn.textContent = state.surgeLoaded ? 'Reload Hot' : origText;
+      btn.disabled = false;
+    }
+  }
+
+  const MACRO_FIELD_ALIASES = {
+    vix:  ['vix','VIX'],
+    vvix: ['vvix','VVIX'],
+    skew: ['skew','SKEW','skew_index'],
+    move: ['move','MOVE','move_index'],
+    spx:  ['spx','SPX','spx_price'],
+    term: ['vix_term_structure','term_structure','vix_term','termStructure'],
+  };
+  function pickField(obj, names){
+    if(!obj) return undefined;
+    for(const n of names){
+      if(obj[n] !== undefined && obj[n] !== null) return obj[n];
+    }
+    return undefined;
+  }
+
+  async function loadMacro(){
+    if(!state.ticker) return;
+    const btn = $('loadMacroBtn');
+    const origText = btn.textContent;
+    btn.textContent = 'Loading…';
+    btn.disabled = true;
+    try{
+      const res = await fa('/v1/stock/' + encodeURIComponent(state.ticker) + '/summary');
+      // Macro context might sit at the top level or nested under a container key —
+      // try likely nesting first, then fall back to searching the top level directly.
+      const container = res.macro || res.macro_context || res.market || res.market_context || res.context || res;
+      const vix  = pickField(container, MACRO_FIELD_ALIASES.vix);
+      const vvix = pickField(container, MACRO_FIELD_ALIASES.vvix);
+      const skew = pickField(container, MACRO_FIELD_ALIASES.skew);
+      const move = pickField(container, MACRO_FIELD_ALIASES.move);
+      const spx  = pickField(container, MACRO_FIELD_ALIASES.spx);
+      const term = pickField(container, MACRO_FIELD_ALIASES.term);
+
+      const found = [vix, vvix, skew, move, spx, term].some(v => v !== undefined);
+      if(!found){
+        const topKeys = Object.keys(res).join(', ');
+        const nestedKeys = (container !== res) ? Object.keys(container).join(', ') : '(no nested container found)';
+        throw new Error('No recognizable macro fields (vix/vvix/skew/move/spx/term). Top-level keys: ' + topKeys + '. Nested keys tried: ' + nestedKeys);
+      }
+
+      const items = [
+        ['VIX',  vix  != null ? Number(vix).toFixed(2)  : '—'],
+        ['VVIX', vvix != null ? Number(vvix).toFixed(2) : '—'],
+        ['SKEW', skew != null ? Number(skew).toFixed(1) : '—'],
+        ['MOVE', move != null ? Number(move).toFixed(2) : '—'],
+        ['SPX',  spx  != null ? Number(spx).toLocaleString() : '—'],
+        ['Term', typeof term === 'string' ? term : (term != null ? JSON.stringify(term) : '—')],
+      ];
+      $('macroGrid').innerHTML = items.map(([lbl,v]) =>
+        `<div class="macro-item"><div class="lbl">${lbl}</div><div class="v">${escapeHtml(String(v))}</div></div>`
+      ).join('');
+      $('macroPanel').style.display = 'flex';
+      btn.textContent = 'Reload Macro';
+    }catch(err){
+      alert('Macro load failed: ' + err.message);
+      btn.textContent = origText;
+    }finally{
       btn.disabled = false;
     }
   }
@@ -1438,6 +1657,10 @@
   $('loadIvBtn').addEventListener('click', loadIv);
   $('loadSurgeBtn').addEventListener('click', loadSurge);
   $('loadNarrativeBtn').addEventListener('click', loadNarrative);
+  $('loadMacroBtn').addEventListener('click', loadMacro);
+  $('macroCloseBtn').addEventListener('click', () => {
+    $('macroPanel').style.display = 'none';
+  });
   $('narrativeCloseBtn').addEventListener('click', () => {
     $('narrativePanel').style.display = 'none';
   });
@@ -1447,6 +1670,8 @@
     if(key !== null){
       state.apiKey = key.trim();
       localStorage.setItem(LS_APIKEY, state.apiKey);
+      state.dailyCapConfirmed = false;
+      loadAccountQuota();
     }
   });
 
@@ -1490,6 +1715,7 @@
   if(!state.apiKey){
     gridWrap.innerHTML = `<div class="empty-state"><div class="big">Add your API key to begin</div>Tap "API Key" above and paste your FlashAlpha X-Api-Key.</div>`;
   } else {
+    loadAccountQuota();
     runSnap(false);
   }
 
