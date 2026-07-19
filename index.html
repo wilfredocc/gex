@@ -283,10 +283,14 @@
   table.gex-grid thead th .exp-walls .cw{ color:var(--blue); }
   table.gex-grid thead th .exp-walls .pw{ color:var(--orange); }
   table.gex-grid thead th .exp-flip{ font-size:9px; margin-top:1px; color:var(--green); }
+
+  /* 0DTE mode dims every column but today's instead of hiding the others outright */
+  table.gex-grid .dim-col{ opacity:0.32; }
+  table.gex-grid thead th.dim-col{ opacity:0.4; }
   .metric .sub.chip{ font-weight:600; }
 
-  .netcol-head{ min-width:96px !important; }
-  td.net-cell{ min-width:96px; text-align:left; padding:0 8px !important; cursor:default; }
+  .netcol-head{ min-width:128px !important; }
+  td.net-cell{ min-width:128px; text-align:left; padding:0 8px !important; cursor:default; }
   tr:nth-child(even) td.net-cell{ background:#0d1117; }
   td.net-cell:hover{ outline:none; }
   .net-bar-wrap{ display:flex; align-items:center; gap:5px; height:100%; }
@@ -801,6 +805,13 @@
     return new Date().toISOString().slice(0,10);
   }
 
+  function formatExpHeader(dateStr){
+    const d = new Date(dateStr + 'T00:00:00');
+    const wd = d.toLocaleDateString('en-US', { weekday: 'short' });
+    const md = String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0');
+    return wd + ' · ' + md;
+  }
+
   function currentWeekBounds(){
     const now = new Date();
     const day = now.getDay(); // 0=Sun..6=Sat
@@ -816,18 +827,12 @@
     if(state.manualPick && state.manualPick.length){
       return state.manualPick.filter(e => all.includes(e));
     }
-    if(state.mode0dte){
-      const t = todayET();
-      const exact = all.filter(e => e === t);
-      if(exact.length) return exact;
-      return all.slice(0,1);
-    }
-    if(state.weekMode){
-      const { monday, friday } = currentWeekBounds();
-      const inWeek = all.filter(e => e >= monday && e <= friday);
-      return inWeek.length ? inWeek : all.slice(0, 5);
-    }
-    return all.slice(0, 8);
+    // 0DTE is a display filter (dims every column but today's) rather than a separate
+    // narrow fetch — it reuses the same week's data Week mode pulls, so toggling between
+    // Week/0DTE doesn't cost extra requests, but 0DTE alone now costs what Week costs.
+    const { monday, friday } = currentWeekBounds();
+    const inWeek = all.filter(e => e >= monday && e <= friday);
+    return inWeek.length ? inWeek : all.slice(0, 5);
   }
 
   function dteFor(expiration){
@@ -1661,6 +1666,7 @@
         ${[20,40,60].map(t => `<button class="srp-btn${totalStrikes===t?' active':''}" data-total="${t}">${t}</button>`).join('')}
       </div>
     </th>`;
+    const todayStr = todayET();
     exps.forEach(e => {
       const meta = expMeta[e];
       const mvcHtml = meta.mvcStrike != null ? `<div class="exp-mvc">MVC $${formatStrike(meta.mvcStrike)}</div>` : '';
@@ -1672,7 +1678,8 @@
       }
       const opexHtml = isOpexFriday(e) ? '<div class="opex-badge">OPEX</div>' : '';
       const flipHtml = meta.flipStrike != null ? `<div class="exp-flip">Flip $${formatStrike(meta.flipStrike)}</div>` : '';
-      html += `<th><div class="exp-date">${e}</div>${opexHtml}${mvcHtml}${wallsHtml}${flipHtml}</th>`;
+      const dimCls = (state.mode0dte && e !== todayStr) ? ' dim-col' : '';
+      html += `<th class="${dimCls.trim()}"><div class="exp-date">${formatExpHeader(e)}</div>${opexHtml}${mvcHtml}${wallsHtml}${flipHtml}</th>`;
     });
     html += '<th class="netcol-head">Net GEX by strike →</th></tr></thead><tbody>';
 
@@ -1688,26 +1695,22 @@
       const isVoid = voidStrikes.has(strike);
       const emLabel = emBandStrikes[strike];
       const isMvcRow = strike === state.mvcStrike;
-      // Show the vs-open change badge on every strike inside the expected-move range
-      // (spot ± 1.2x EM), not just the handful of tagged special strikes — this is what
-      // matters for intraday level-tracking during the session.
-      const EM_RANGE_MULT = 1.2;
-      const isInEmRange = (state.emValue != null && state.spot != null)
-        ? Math.abs(strike - state.spot) <= state.emValue * EM_RANGE_MULT
-        : false;
       const rowClasses = [isAtm ? 'atm-row' : '', isFlip ? 'flip-row' : '', isPin ? 'pin-row' : '', isBump ? 'bump-row' : '', isNie ? 'nie-row' : '', isReversal ? 'reversal-row' : '', isSurge ? 'surge-row' : '', isMagnet ? 'magnet-row' : '', isVoid ? 'void-row' : '', emLabel ? 'em-row' : ''].filter(Boolean).join(' ');
       const chg = pctChangeBadge(netByStrike[strike] || 0, strikeBaseline[strike]);
-      html += `<tr class="${rowClasses}"><th class="strike-cell"><div class="strike-cell-inner"><span class="strike-tags">${isMvcRow ? '<span class="mvc-star" title="MVC — largest |GEX| strike">★</span>' : ''}${isAtm ? '<span class="spot-tag" title="Spot — current price">◀</span>' : ''}${isPin ? '<span class="pin-tag" title="Pin — pin-risk target strike">◉</span>' : ''}${isBump ? '<span class="bump-tag" title="Bump — gatekeeper node between spot and MVC">‖</span>' : ''}${isNie ? '<span class="nie-tag" title="Nie — midpoint between call wall and put wall">⊙</span>' : ''}${isReversal ? '<span class="reversal-tag" title="Reversal — heaviest node opposite MVC">⇄</span>' : ''}${isSurge ? '<span class="surge-tag" title="Hot — live-flow hot strike today">⚡</span>' : ''}${isMagnet ? '<span class="magnet-tag" title="Magnet — 0DTE pin target into the close">⊕</span>' : ''}${isVoid ? '<span class="void-tag" title="Void — air pocket, thin GEX">≈</span>' : ''}${emLabel ? `<span class="em-tag" title="${emLabel} expected move from spot">◆${emLabel}</span>` : ''}${(isMvcRow||isBump||isNie||isReversal||isPin||isInEmRange) ? chg : ''}</span><span class="strike-num">${formatStrike(strike)}</span></div></th>`;
+      // vs-open change now lives in the Net GEX by strike column, keeping the strike column
+      // itself down to just the level tags.
+      html += `<tr class="${rowClasses}"><th class="strike-cell"><div class="strike-cell-inner"><span class="strike-tags">${isMvcRow ? '<span class="mvc-star" title="MVC — largest |GEX| strike">★</span>' : ''}${isAtm ? '<span class="spot-tag" title="Spot — current price">◀</span>' : ''}${isPin ? '<span class="pin-tag" title="Pin — pin-risk target strike">◉</span>' : ''}${isBump ? '<span class="bump-tag" title="Bump — gatekeeper node between spot and MVC">‖</span>' : ''}${isNie ? '<span class="nie-tag" title="Nie — midpoint between call wall and put wall">⊙</span>' : ''}${isReversal ? '<span class="reversal-tag" title="Reversal — heaviest node opposite MVC">⇄</span>' : ''}${isSurge ? '<span class="surge-tag" title="Hot — live-flow hot strike today">⚡</span>' : ''}${isMagnet ? '<span class="magnet-tag" title="Magnet — 0DTE pin target into the close">⊕</span>' : ''}${isVoid ? '<span class="void-tag" title="Void — air pocket, thin GEX">≈</span>' : ''}${emLabel ? `<span class="em-tag" title="${emLabel} expected move from spot">◆${emLabel}</span>` : ''}</span><span class="strike-num">${formatStrike(strike)}</span></div></th>`;
       exps.forEach(e => {
         const c = cellData[strike + '|' + e];
+        const dimCls = (state.mode0dte && e !== todayStr) ? ' dim-col' : '';
         if(!c){
-          html += `<td class="empty">—</td>`;
+          html += `<td class="empty${dimCls}">—</td>`;
         } else {
           const bg = gexColor(c.net_gex || 0, maxAbs);
           const isMvcCell = expMeta[e].mvcStrike === strike;
           const oiChange = (c.call_oi_change || 0) + (c.put_oi_change || 0);
           const arrow = oiChange > 0 ? '<span class="oi-up">▲</span>' : (oiChange < 0 ? '<span class="oi-down">▼</span>' : '');
-          html += `<td class="${isMvcCell ? 'mvc-cell' : ''}" style="background:${bg}" data-strike="${strike}" data-exp="${e}"><div class="cellval">${fmtMoney(c.net_gex)}${arrow}</div></td>`;
+          html += `<td class="${isMvcCell ? 'mvc-cell' : ''}${dimCls}" style="background:${bg}" data-strike="${strike}" data-exp="${e}"><div class="cellval">${fmtMoney(c.net_gex)}${arrow}</div></td>`;
         }
       });
       const net = netByStrike[strike] || 0;
@@ -1720,6 +1723,7 @@
           <div class="net-bar-fill" style="left:${barLeft}%; width:${barWidth}%; background:${barColor};"></div>
         </div>
         <div class="net-val" style="color:${net>=0?'var(--blue)':'var(--orange)'}">${fmtMoney(net)}</div>
+        ${chg}
       </div></td>`;
       html += '</tr>';
     });
