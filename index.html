@@ -1307,26 +1307,26 @@
     const f3color = accel > 0.7 ? 'var(--orange)' : accel > 0.4 ? 'var(--gold)' : 'var(--text-faint)';
     const f3desc = '0DTE gamma as % of total: ' + Math.round(accel * 100) + '% — higher = more aggressive intraday hedging';
 
-    // FACTOR 4 — PATH RESISTANCE: GEX density between spot and the King Node in the squeeze direction
+    // FACTOR 4 — PATH RESISTANCE: GEX density between spot and the MVC strike in the squeeze direction
     const sortedSt = [...st0].sort((a, b) => a.strike - b.strike);
     const goingUp = posVex;
     let airScore = 0, airPct = 0, airLabel = '', airColor = 'var(--text-faint)';
     if(sortedSt.length > 1){
-      const kingNode = sortedSt.reduce((a, b) => Math.abs(b.net_gex || 0) > Math.abs(a.net_gex || 0) ? b : a);
+      const mvcNode = sortedSt.reduce((a, b) => Math.abs(b.net_gex || 0) > Math.abs(a.net_gex || 0) ? b : a);
       const between = goingUp
-        ? sortedSt.filter(s => s.strike > spot && s.strike < kingNode.strike)
-        : sortedSt.filter(s => s.strike < spot && s.strike > kingNode.strike);
+        ? sortedSt.filter(s => s.strike > spot && s.strike < mvcNode.strike)
+        : sortedSt.filter(s => s.strike < spot && s.strike > mvcNode.strike);
       const totalGexBetween = between.reduce((a, b) => a + Math.abs(b.net_gex || 0), 0);
       const avgGexAll = (stAll && stAll.length) ? stAll.reduce((a, b) => a + Math.abs(b.net_gex || 0), 0) / stAll.length : 0;
       const resistance = avgGexAll > 0 ? Math.min(totalGexBetween / (avgGexAll * (between.length || 1)), 1) : 0;
       const airPctCalc = Math.max(0, 1 - resistance);
       airScore = Math.round(airPctCalc * 20);
       airPct = Math.round(airPctCalc * 100);
-      const distPct = Math.abs(kingNode.strike - spot) / spot * 100;
-      airLabel = (airPct > 70 ? 'AIR POCKET — ' : 'RESISTANCE — ') + distPct.toFixed(1) + '% TO KING NODE';
+      const distPct = Math.abs(mvcNode.strike - spot) / spot * 100;
+      airLabel = (airPct > 70 ? 'VOID — ' : 'RESISTANCE — ') + distPct.toFixed(1) + '% TO MVC';
       airColor = airPct > 70 ? 'var(--skyblue)' : 'var(--text-faint)';
     }
-    const f4desc = 'GEX density between spot and King Node — air pocket = squeeze can run farther';
+    const f4desc = 'GEX density between spot and MVC — void (air pocket) = squeeze can run farther';
 
     const rawScore = f1score + f2score + f3score + airScore;
     const score = Math.min(100, rawScore);
@@ -1338,10 +1338,10 @@
     } else if(score >= 60){
       if(posVex){
         direction = '🚀 BULL SQUEEZE SETUP'; dirClass = 'bull';
-        summary = 'Neg GEX + pos VEX + low resistance above. If vol spikes, dealers FORCED to buy. Watch for explosive move toward upside King Node.';
+        summary = 'Neg GEX + pos VEX + low resistance above. If vol spikes, dealers FORCED to buy. Watch for explosive move toward upside MVC.';
       } else {
         direction = '🔻 BEAR SQUEEZE SETUP'; dirClass = 'bear';
-        summary = 'Neg GEX + neg VEX + low resistance below. If vol spikes, dealers FORCED to sell. Watch for accelerated move toward downside King Node.';
+        summary = 'Neg GEX + neg VEX + low resistance below. If vol spikes, dealers FORCED to sell. Watch for accelerated move toward downside MVC.';
       }
     } else if(score >= 35){
       direction = '⚡ ELEVATED PRESSURE'; dirClass = posVex ? 'bull' : 'bear';
