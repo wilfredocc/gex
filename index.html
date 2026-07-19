@@ -275,7 +275,7 @@
 
   th.strike-cell .spot-tag{ color:var(--gold); font-size:15px; margin-left:3px; }
   th.strike-cell .mvc-star{ color:var(--gold); margin-right:2px; }
-  td.mvc-cell{ outline:1.5px solid var(--gold) !important; outline-offset:-1.5px; }
+  td.mvc-cell{ outline:3px solid var(--gold) !important; outline-offset:-3px; }
   td.mvc-cell .cellval::after{ content:' ★'; color:var(--gold); font-size:8px; }
   .oi-up{ color:var(--green); font-size:8px; margin-left:3px; }
   .oi-down{ color:var(--red); font-size:8px; margin-left:3px; }
@@ -369,6 +369,16 @@
     .rail-chip.active{ background:var(--blue-deep); border-color:var(--blue); color:#fff; }
     .rail-empty{ font-family:var(--mono); font-size:10px; color:var(--text-faint); padding:2px 4px; line-height:1.4; }
 
+    .rail-symbol{ display:flex; flex-direction:column; gap:6px; margin-bottom:2px; }
+    .rail-symbol input{
+      width:100%; background:var(--panel2); border:1px solid var(--border); color:var(--text);
+      font-family:var(--mono); font-size:15px; font-weight:700; text-transform:uppercase;
+      padding:7px 9px; border-radius:6px; letter-spacing:0.5px;
+    }
+    .rail-symbol input:focus{ outline:none; border-color:var(--blue); }
+    .rail-symbol-btns{ display:flex; gap:6px; }
+    .rail-symbol-btns button{ flex:1; }
+
     .rail-macro-grid{ display:flex; flex-direction:column; gap:3px; padding:0 2px; }
     .rail-macro-item{
       display:flex; justify-content:space-between; align-items:baseline;
@@ -397,6 +407,19 @@
     table.gex-grid thead th .exp-walls{ font-size:11px; }
     table.gex-grid thead th .exp-flip{ font-size:11px; }
 
+    /* symbol entry now lives in the rail — hide the header's copy, freeing up header space */
+    #tickerForm #tickerInput, #tickerForm #favBtn, #tickerForm #loadBtn{ display:none; }
+    /* replaced by the bigger MVC · Day / MVC · Week hero cards below */
+    #mvcPillWrap{ display:none; }
+
+    .metric-hero{
+      background:var(--panel2); border:1px solid var(--border); border-radius:8px;
+      padding:5px 14px;
+    }
+    .metric-hero .lbl{ font-size:10px; }
+    .metric-hero .v{ font-size:19px; }
+    .metric-hero .sub{ font-size:11px; }
+
     .controls-row{ flex-wrap:wrap; overflow-x:visible; }
     table.gex-grid{ font-size:11.5px; }
 
@@ -414,7 +437,16 @@
 
 <div class="app-shell">
   <div class="app-rail" id="appRail">
-    <div class="rail-title">Watchlist</div>
+    <div class="rail-title">Symbol</div>
+    <div class="rail-symbol">
+      <input type="text" id="railTickerInput" maxlength="6" autocomplete="off" spellcheck="false" placeholder="SPY">
+      <div class="rail-symbol-btns">
+        <button type="button" class="small" id="railFavBtn" title="Add to watchlist">☆</button>
+        <button type="button" class="primary small" id="railLoadBtn">Load</button>
+      </div>
+    </div>
+
+    <div class="rail-title" style="margin-top:8px;">Watchlist</div>
     <div class="rail-list" id="railList"></div>
 
     <div class="rail-title" style="margin-top:14px;">Macro</div>
@@ -439,7 +471,9 @@
       <input type="text" id="tickerInput" value="SPY" maxlength="6" autocomplete="off" spellcheck="false">
       <button type="button" class="small" id="favBtn" title="Add to watchlist">☆</button>
       <button type="submit" class="primary" id="loadBtn">Load</button>
-      <div class="metric"><div class="lbl">Spot</div><div class="v" id="mSpot">—</div></div>
+      <div class="metric metric-hero" id="spotCard"><div class="lbl">Spot</div><div class="v" id="mSpot">—</div></div>
+      <div class="metric metric-hero" id="mvcDayCard"><div class="lbl">MVC · Day</div><div class="v gold" id="mMvcDay">—</div><div class="sub" id="mMvcDaySub"></div></div>
+      <div class="metric metric-hero" id="mvcWeekCard"><div class="lbl">MVC · Week</div><div class="v gold" id="mMvcWeek">—</div><div class="sub" id="mMvcWeekSub"></div></div>
       <div class="metric"><div class="lbl">Regime</div><div class="v" id="mRegime">—</div></div>
     </form>
   </div>
@@ -462,7 +496,7 @@
       <button class="small" id="loadSurgeBtn">Load Hot</button>
       <button class="small" id="loadNarrativeBtn">Load Narrative</button>
       <button class="small" id="loadMacroBtn">Load Macro</button>
-      <div class="metric"><div class="lbl">MVC ★</div><div class="v gold" id="mMvc">—</div><div class="sub" id="mMvcSub"></div></div>
+      <div class="metric" id="mvcPillWrap"><div class="lbl">MVC ★</div><div class="v gold" id="mMvc">—</div><div class="sub" id="mMvcSub"></div></div>
     </div>
 
     <div class="budget-readout" id="budgetReadout">req today: 0/2400</div>
@@ -617,9 +651,15 @@
   function updateFavBtn(){
     const list = loadWatchlist();
     const isFav = list.includes(state.ticker);
-    const btn = $('favBtn');
-    btn.textContent = isFav ? '★' : '☆';
-    btn.classList.toggle('active', isFav);
+    ['favBtn', 'railFavBtn'].forEach(id => {
+      const btn = document.getElementById(id);
+      if(!btn) return;
+      btn.textContent = isFav ? '★' : '☆';
+      btn.classList.toggle('active', isFav);
+    });
+    tickerInput.value = state.ticker;
+    const railInput = document.getElementById('railTickerInput');
+    if(railInput) railInput.value = state.ticker;
   }
   function selectTicker(t){
     tickerInput.value = t;
@@ -664,6 +704,7 @@
 
   const $ = (id) => document.getElementById(id);
   const tickerInput = $('tickerInput');
+  const railTickerInput = $('railTickerInput');
   const tickerForm = $('tickerForm');
   const statusDot = $('statusDot');
   const lastUpdatedEl = $('lastUpdated');
@@ -676,6 +717,7 @@
   const pickerList = $('pickerList');
 
   tickerInput.value = state.ticker;
+  if(railTickerInput) railTickerInput.value = state.ticker;
 
   function incRequests(n){
     state.requestCount += n;
@@ -1322,6 +1364,29 @@
     state.mvcStrike = mvcStrike;
     $('mMvc').textContent = mvcStrike != null ? formatStrike(mvcStrike) : '—';
     $('mMvcSub').textContent = mvcStrike != null ? fmtMoney(mvcVal) : '';
+    // desktop hero card mirrors the same aggregate value — "week" here means whatever's
+    // currently loaded (all of this week's expirations in Week mode, one day in 0DTE mode)
+    const mMvcWeek = document.getElementById('mMvcWeek');
+    const mMvcWeekSub = document.getElementById('mMvcWeekSub');
+    if(mMvcWeek) mMvcWeek.textContent = mvcStrike != null ? formatStrike(mvcStrike) : '—';
+    if(mMvcWeekSub) mMvcWeekSub.textContent = mvcStrike != null ? fmtMoney(mvcVal) : '';
+
+    // "day" MVC — the nearest single expiration's own largest |GEX| strike, independent of
+    // whichever expirations happen to be loaded for the current view mode.
+    const expDatesSorted = Object.keys(state.gexByExp).sort();
+    const nearestExpKey = expDatesSorted[0];
+    const nearestExpData = nearestExpKey ? state.gexByExp[nearestExpKey] : null;
+    let mvcDayStrike = null, mvcDayVal = 0, mvcDayAbs = -1;
+    if(nearestExpData && nearestExpData.strikes){
+      nearestExpData.strikes.forEach(s => {
+        const v = s.net_gex || 0;
+        if(Math.abs(v) > mvcDayAbs){ mvcDayAbs = Math.abs(v); mvcDayStrike = s.strike; mvcDayVal = v; }
+      });
+    }
+    const mMvcDay = document.getElementById('mMvcDay');
+    const mMvcDaySub = document.getElementById('mMvcDaySub');
+    if(mMvcDay) mMvcDay.textContent = mvcDayStrike != null ? formatStrike(mvcDayStrike) : '—';
+    if(mMvcDaySub) mMvcDaySub.textContent = mvcDayStrike != null ? fmtMoney(mvcDayVal) : '';
 
     const mRegime = $('mRegime');
     mRegime.textContent = totalNet >= 0 ? 'Positive (calm)' : 'Negative (volatile)';
@@ -1761,6 +1826,21 @@
     updateFavBtn();
     renderWatchlist();
   });
+
+  if(railTickerInput){
+    railTickerInput.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        tickerInput.value = railTickerInput.value;
+        tickerForm.requestSubmit();
+      }
+    });
+    $('railLoadBtn').addEventListener('click', () => {
+      tickerInput.value = railTickerInput.value;
+      tickerForm.requestSubmit();
+    });
+    $('railFavBtn').addEventListener('click', () => { $('favBtn').click(); });
+  }
 
   $('weekBtn').addEventListener('click', () => {
     state.weekMode = true;
