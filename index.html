@@ -59,13 +59,17 @@
     flex-shrink:0;
   }
   .brand-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
-  .brand{ display:flex; align-items:center; gap:6px; }
+  .brand{ display:flex; align-items:center; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; -ms-overflow-style:none; }
+  .brand::-webkit-scrollbar{ display:none; height:0; }
+  .brand > *{ flex-shrink:0; }
   .brand .mark{ font-family:var(--mono); font-weight:700; letter-spacing:0.5px; color:var(--blue); font-size:15px; }
   .brand .sub{ font-size:11px; color:var(--text-faint); font-family:var(--mono); }
   .brand .mini-clock{ font-size:9px; color:var(--text-faint); font-family:var(--mono); }
   button.mini{ padding:2px 6px; font-size:9px; }
 
-  .ticker-form{ display:flex; align-items:center; gap:6px; }
+  .ticker-form{ display:flex; align-items:center; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; -ms-overflow-style:none; }
+  .ticker-form::-webkit-scrollbar{ display:none; height:0; }
+  .ticker-form > *{ flex-shrink:0; }
   .ticker-form input[type=text]{
     background:var(--bg); border:1px solid var(--border); color:var(--text);
     font-family:var(--mono); font-size:15px; font-weight:600; letter-spacing:1px;
@@ -1275,12 +1279,18 @@
   // today's gamma regime with weeks-out vanna exposure). DEX/CHEX are intentionally not used;
   // the score only ever needed GEX + VEX.
   // ══════════════════════════════════════════════════════════
-  function calcSqueezeScore(st0, spot, stAll, vexSt, maxPainStrike){
-    if(!st0 || !st0.length || spot == null) return null;
+  // Uses /v1/exposure/zero-dte/{symbol} — a single call that bundles net_gex, net_vex, and
+  // pct_of_total_gex from the SAME 0DTE payload, so GEX and VEX can never end up scoped to
+  // different expirations. Also gives max_pain directly, so no separate call for that either.
+  function calcSqueezeScore(zdte){
+    if(!zdte || zdte.no_zero_dte) return null;
+    const spot = zdte.underlying_price;
+    const st0 = zdte.strikes || [];
+    if(!st0.length || spot == null) return null;
 
     // FACTOR 1 — GEX REGIME (0DTE): negative = dealers short gamma = moves amplified
-    const ngex0 = st0.reduce((a, b) => a + (b.net_gex || 0), 0);
-    const ngexAll = (stAll || []).reduce((a, b) => a + (b.net_gex || 0), 0);
+    const exp = zdte.exposures || {};
+    const ngex0 = typeof exp.net_gex === 'number' ? exp.net_gex : st0.reduce((a, b) => a + (b.net_gex || 0), 0);
     const negGex0 = ngex0 < 0;
     const f1score = negGex0 ? 25 : 0;
     const f1label = negGex0 ? 'NEG GEX — AMPLIFYING' : 'POS GEX — PINNING';
@@ -1288,8 +1298,9 @@
     const f1pct = negGex0 ? 100 : 0;
     const f1desc = negGex0 ? 'Dealers SHORT gamma — moves accelerate beyond key levels' : 'Dealers LONG gamma — price gravitates toward MVC';
 
-    // FACTOR 2 — VEX SIGNAL, scoped to the SAME nearest expiration as factor 1
-    const nvex = (vexSt || []).reduce((a, b) => a + (b.net_vex ?? b.vex ?? b.net_vanna ?? 0), 0);
+    // FACTOR 2 — VEX SIGNAL, from the SAME 0DTE payload as factor 1 — never a different expiration
+    const haveVex = typeof exp.net_vex === 'number';
+    const nvex = haveVex ? exp.net_vex : 0;
     const posVex = nvex > 0;
     const vexMag = Math.min(Math.abs(nvex) / 1e9, 1);
     const f2score = Math.round(vexMag * 20);
@@ -1297,17 +1308,17 @@
     const f2color = posVex ? 'var(--blue)' : 'var(--orange)';
     const f2pct = Math.round(vexMag * 100);
     const f2desc = posVex ? 'Rising vol forces dealer BUYING — bullish feedback' : 'Rising vol forces dealer SELLING — bearish feedback';
-    const haveVex = !!(vexSt && vexSt.length);
 
-    // FACTOR 3 — 0DTE ACCEL: today's gamma as a share of the full chain's gamma
-    const accel = ngexAll !== 0 ? Math.min(Math.abs(ngex0) / Math.abs(ngexAll), 1) : 0;
+    // FACTOR 3 — 0DTE ACCEL: today's gamma as a share of the full chain's gamma — given directly
+    const accel = typeof exp.pct_of_total_gex === 'number' ? Math.min(Math.max(exp.pct_of_total_gex / 100, 0), 1) : 0;
     const f3score = Math.round(accel * 25);
     const f3pct = Math.round(accel * 100);
     const f3label = accel > 0.7 ? 'HIGH 0DTE DOMINANCE' : accel > 0.4 ? 'MODERATE 0DTE' : 'LOW 0DTE';
     const f3color = accel > 0.7 ? 'var(--orange)' : accel > 0.4 ? 'var(--gold)' : 'var(--text-faint)';
     const f3desc = '0DTE gamma as % of total: ' + Math.round(accel * 100) + '% — higher = more aggressive intraday hedging';
 
-    // FACTOR 4 — PATH RESISTANCE: GEX density between spot and the MVC strike in the squeeze direction
+    // FACTOR 4 — PATH RESISTANCE: GEX density between spot and the MVC strike, self-normalized
+    // against the average |GEX| among today's own 0DTE strikes (no cross-expiry call needed).
     const sortedSt = [...st0].sort((a, b) => a.strike - b.strike);
     const goingUp = posVex;
     let airScore = 0, airPct = 0, airLabel = '', airColor = 'var(--text-faint)';
@@ -1317,8 +1328,8 @@
         ? sortedSt.filter(s => s.strike > spot && s.strike < mvcNode.strike)
         : sortedSt.filter(s => s.strike < spot && s.strike > mvcNode.strike);
       const totalGexBetween = between.reduce((a, b) => a + Math.abs(b.net_gex || 0), 0);
-      const avgGexAll = (stAll && stAll.length) ? stAll.reduce((a, b) => a + Math.abs(b.net_gex || 0), 0) / stAll.length : 0;
-      const resistance = avgGexAll > 0 ? Math.min(totalGexBetween / (avgGexAll * (between.length || 1)), 1) : 0;
+      const avgGex0dte = sortedSt.reduce((a, b) => a + Math.abs(b.net_gex || 0), 0) / sortedSt.length;
+      const resistance = avgGex0dte > 0 ? Math.min(totalGexBetween / (avgGex0dte * (between.length || 1)), 1) : 0;
       const airPctCalc = Math.max(0, 1 - resistance);
       airScore = Math.round(airPctCalc * 20);
       airPct = Math.round(airPctCalc * 100);
@@ -1351,6 +1362,7 @@
       summary = 'Conditions not aligned for a squeeze. GEX structure does not support explosive move right now.';
     }
 
+    const maxPainStrike = zdte.pin_risk ? zdte.pin_risk.max_pain : null;
     let maxPainNote = '';
     if(maxPainStrike != null && spot){
       const mpDist = Math.abs(maxPainStrike - spot) / spot * 100;
@@ -1389,7 +1401,7 @@
         <div class="sq-f-desc">${escapeHtml(f.val)}<br><span class="sub">${escapeHtml(f.desc)}</span></div>
       </div>`).join('');
     const mpHtml = sq.maxPainNote ? `<div class="sq-maxpain">📍 ${escapeHtml(sq.maxPainNote)}</div>` : '';
-    const vexNote = sq.haveVex ? '' : `<div class="sq-maxpain" style="color:var(--text-faint);border-color:var(--border);background:transparent;">VEX Signal is estimated from an empty/unavailable response — treat that factor's score loosely.</div>`;
+    const vexNote = sq.haveVex ? '' : `<div class="sq-maxpain" style="color:var(--text-faint);border-color:var(--border);background:transparent;">This response had no net_vex field — treat the VEX Signal factor's score loosely.</div>`;
     return `<div class="sq-main">
       <div class="sq-ring-wrap">${ring}<div class="sq-ring-num" style="color:${ringColor}">${sq.score}<span class="sq-ring-max">/100</span></div></div>
       <div class="sq-info">
@@ -1408,34 +1420,11 @@
     btn.textContent = 'Loading…';
     btn.disabled = true;
     try{
-      const nearestExpKey = Object.keys(state.gexByExp).sort()[0];
-      const nearestExpData = nearestExpKey ? state.gexByExp[nearestExpKey] : null;
-      if(!nearestExpData || !nearestExpData.strikes || !nearestExpData.strikes.length){
-        throw new Error('No 0DTE-scoped GEX data loaded yet — hit Load on the main grid first.');
+      const zdte = await fa('/v1/exposure/zero-dte/' + encodeURIComponent(state.ticker) + '?strike_range=0.05');
+      if(zdte.no_zero_dte){
+        throw new Error(zdte.message || (state.ticker + ' has no 0DTE expiry today.'));
       }
-      const st0 = nearestExpData.strikes;
-      const spot = state.spot != null ? state.spot : nearestExpData.underlying_price;
-
-      const [gexAllRes, vexRes] = await Promise.all([
-        fa('/v1/exposure/gex/' + encodeURIComponent(state.ticker)),
-        fa('/v1/exposure/vex/' + encodeURIComponent(state.ticker) + '?expiration=' + encodeURIComponent(nearestExpKey))
-          .catch(err => { console.warn('[GEX] VEX fetch failed, squeeze score will run without it:', err.message); return null; }),
-      ]);
-      let maxPainStrike = null;
-      try{
-        const mp = await fa('/v1/max-pain/' + encodeURIComponent(state.ticker) + '?expiration=' + encodeURIComponent(nearestExpKey));
-        maxPainStrike = mp.max_pain_strike ?? mp.maxPainStrike ?? mp.strike ?? null;
-      }catch(err){
-        console.warn('[GEX] max-pain fetch failed (non-critical):', err.message);
-      }
-
-      const stAll = gexAllRes.strikes || [];
-      const vexSt = vexRes ? (vexRes.strikes || []) : [];
-      if(vexRes && vexSt.length && !('net_vex' in vexSt[0]) && !('vex' in vexSt[0]) && !('net_vanna' in vexSt[0])){
-        console.warn('[GEX] VEX response had no recognizable field (net_vex/vex/net_vanna). Sample strike keys:', Object.keys(vexSt[0]).join(', '));
-      }
-
-      const sq = calcSqueezeScore(st0, spot, stAll, vexSt, maxPainStrike);
+      const sq = calcSqueezeScore(zdte);
       if(!sq) throw new Error('Could not compute a score from the data returned — spot price or 0DTE strikes missing.');
 
       $('squeezeContent').innerHTML = buildSqueezeScoreHtml(sq);
@@ -1464,12 +1453,25 @@
     const panel = $('narrativePanel');
     const content = $('narrativeContent');
     try{
-      const res = await fa('/v1/exposure/narrative/' + encodeURIComponent(state.ticker));
+      const [res, flowRes] = await Promise.all([
+        fa('/v1/exposure/narrative/' + encodeURIComponent(state.ticker)),
+        // Growth plan+ endpoint — live 0DTE flow since session open on effective OI, unlike
+        // the narrative endpoint's own FLOW field which needs prior-day OI it never seems to
+        // have. Best-effort: falls back silently (tier-restricted, no 0DTE today, etc.)
+        fa('/v1/flow/zero-dte/snapshot/' + encodeURIComponent(state.ticker))
+          .catch(err => { console.warn('[GEX] 0DTE flow snapshot unavailable, FLOW card keeps the narrative endpoint\'s own text:', err.message); return null; }),
+      ]);
       // `narrative` is confirmed to exist at the top level, but it's not a plain string —
       // it's a nested object. Try common nested field names before giving up.
       let text = null;
       let structured = false;
       const n = res.narrative;
+
+      const flowDesc = flowRes && flowRes.flow_direction && flowRes.flow_direction.description;
+      if(flowDesc && n && typeof n === 'object'){
+        n.flow = flowDesc;
+      }
+
       if(typeof n === 'string'){
         text = n;
       } else if(n && typeof n === 'object'){
