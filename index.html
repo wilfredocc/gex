@@ -1325,27 +1325,39 @@
     const f3color = accel > 0.7 ? 'var(--orange)' : accel > 0.4 ? 'var(--gold)' : 'var(--text-faint)';
     const f3desc = '0DTE gamma as % of total: ' + Math.round(accel * 100) + '% — higher = more aggressive intraday hedging';
 
-    // FACTOR 4 — PATH RESISTANCE: GEX density between spot and the MVC strike, self-normalized
-    // against the average |GEX| among today's own 0DTE strikes (no cross-expiry call needed).
+    // FACTOR 4 — PATH RESISTANCE: GEX density between spot and the wall in the squeeze
+    // direction (Call Wall if squeezing up, Put Wall if squeezing down) — NOT always "MVC".
+    // MVC is just the single largest |GEX| strike on the whole chain and can land on either
+    // side of spot; forcing the path toward it regardless of squeeze direction produced
+    // nonsense (e.g. "bull squeeze toward MVC" when MVC actually sits below spot). Call/Put
+    // Wall are, by definition, always on the correct side.
     const sortedSt = [...st0].sort((a, b) => a.strike - b.strike);
     const goingUp = posVex;
-    let airScore = 0, airPct = 0, airLabel = '', airColor = 'var(--text-faint)';
-    if(sortedSt.length > 1){
-      const mvcNode = sortedSt.reduce((a, b) => Math.abs(b.net_gex || 0) > Math.abs(a.net_gex || 0) ? b : a);
+    let airScore = 0, airPct = 0, airLabel = '', airColor = 'var(--text-faint)', wallLabel = 'wall';
+    const sideStrikes = goingUp ? sortedSt.filter(s => s.strike > spot) : sortedSt.filter(s => s.strike < spot);
+    if(sideStrikes.length){
+      const wallNode = goingUp
+        ? sideStrikes.reduce((a, b) => (b.net_gex || 0) > (a.net_gex || 0) ? b : a)   // Call Wall: most positive GEX above spot
+        : sideStrikes.reduce((a, b) => (b.net_gex || 0) < (a.net_gex || 0) ? b : a);  // Put Wall: most negative GEX below spot
+      wallLabel = goingUp ? 'CALL WALL' : 'PUT WALL';
       const between = goingUp
-        ? sortedSt.filter(s => s.strike > spot && s.strike < mvcNode.strike)
-        : sortedSt.filter(s => s.strike < spot && s.strike > mvcNode.strike);
+        ? sortedSt.filter(s => s.strike > spot && s.strike < wallNode.strike)
+        : sortedSt.filter(s => s.strike < spot && s.strike > wallNode.strike);
       const totalGexBetween = between.reduce((a, b) => a + Math.abs(b.net_gex || 0), 0);
       const avgGex0dte = sortedSt.reduce((a, b) => a + Math.abs(b.net_gex || 0), 0) / sortedSt.length;
       const resistance = avgGex0dte > 0 ? Math.min(totalGexBetween / (avgGex0dte * (between.length || 1)), 1) : 0;
       const airPctCalc = Math.max(0, 1 - resistance);
       airScore = Math.round(airPctCalc * 20);
       airPct = Math.round(airPctCalc * 100);
-      const distPct = Math.abs(mvcNode.strike - spot) / spot * 100;
-      airLabel = (airPct > 70 ? 'VOID — ' : 'RESISTANCE — ') + distPct.toFixed(1) + '% TO MVC';
+      const distPct = Math.abs(wallNode.strike - spot) / spot * 100;
+      airLabel = (airPct > 70 ? 'VOID — ' : 'RESISTANCE — ') + distPct.toFixed(1) + '% TO ' + wallLabel;
       airColor = airPct > 70 ? 'var(--skyblue)' : 'var(--text-faint)';
+    } else {
+      // No strikes at all on the squeeze-direction side of spot (rare — thin/edge-of-chain data)
+      airLabel = 'NO ' + (goingUp ? 'CALL' : 'PUT') + ' WALL DATA ABOVE/BELOW SPOT';
     }
-    const f4desc = 'GEX density between spot and MVC — void (air pocket) = squeeze can run farther';
+    const f4desc = 'GEX density between spot and the ' + wallLabel.toLowerCase() + ' in the squeeze direction — void (air pocket) = squeeze can run farther';
+
 
     const rawScore = f1score + f2score + f3score + airScore;
     const score = Math.min(100, rawScore);
@@ -1357,10 +1369,10 @@
     } else if(score >= 60){
       if(posVex){
         direction = '🚀 BULL SQUEEZE SETUP'; dirClass = 'bull';
-        summary = 'Neg GEX + pos VEX + low resistance above. If vol spikes, dealers FORCED to buy. Watch for explosive move toward upside MVC.';
+        summary = 'Neg GEX + pos VEX + low resistance above. If vol spikes, dealers FORCED to buy. Watch for explosive move toward the call wall.';
       } else {
         direction = '🔻 BEAR SQUEEZE SETUP'; dirClass = 'bear';
-        summary = 'Neg GEX + neg VEX + low resistance below. If vol spikes, dealers FORCED to sell. Watch for accelerated move toward downside MVC.';
+        summary = 'Neg GEX + neg VEX + low resistance below. If vol spikes, dealers FORCED to sell. Watch for accelerated move toward the put wall.';
       }
     } else if(score >= 35){
       direction = '⚡ ELEVATED PRESSURE'; dirClass = posVex ? 'bull' : 'bear';
