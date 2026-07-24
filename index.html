@@ -1158,8 +1158,14 @@
       const skew  = toNum(pickField(container, MACRO_FIELD_ALIASES.skew));
       const move  = toNum(pickField(container, MACRO_FIELD_ALIASES.move));
       const spx   = toNum(pickField(container, MACRO_FIELD_ALIASES.spx));
-      const vix3m = toNum(pickField(container, MACRO_FIELD_ALIASES.vix3m));
+      let vix3m = toNum(pickField(container, MACRO_FIELD_ALIASES.vix3m));
       const slope = toNum(pickField(container, MACRO_FIELD_ALIASES.slope));
+
+      // vix_3m isn't its own top-level field — the confirmed container key is
+      // vix_term_structure (nested object), so pull vix3m/slope from there if present.
+      const termObj = container.vix_term_structure;
+      const vix3mNested = toNum(termObj && (termObj.vix_3m ?? termObj.vix3m ?? (termObj.levels && termObj.levels.vix3m)));
+      if(vix3m == null && vix3mNested != null) vix3m = vix3mNested;
 
       // Term structure derived from vix vs vix_3m (or the slope field directly, if present)
       // rather than a separate structure/label field — the docs don't list one.
@@ -1174,11 +1180,20 @@
         termLabel = structure + ' (' + (slopePct > 0 ? '+' : '') + slopePct.toFixed(1) + '%)';
       }
 
+      const recognizedKeys = ['vix','vvix','skew','move','spx','vix_term_structure'];
+      const keysPresent = recognizedKeys.filter(k => k in container);
       const found = [vix, vvix, skew, move, spx, vix3m].some(v => v !== null);
       if(!found){
+        if(keysPresent.length){
+          // The field NAMES are right (confirmed present) but every value is null right
+          // now — almost certainly a closed-market gap rather than a mapping bug.
+          const isWeekend = [0, 6].includes(new Date().getDay());
+          throw new Error('Macro fields (' + keysPresent.join(', ') + ') are present but all null right now' +
+            (isWeekend ? ' — markets are closed (weekend), so FlashAlpha likely has no fresh macro snapshot yet.' : '. Try again during trading hours, or this may be a temporary gap on FlashAlpha\'s side.'));
+        }
         const topKeys = Object.keys(res).join(', ');
         const macroKeys = (container !== res) ? Object.keys(container).join(', ') : '(no separate macro/market container found)';
-        throw new Error('No recognizable macro fields (vix/vvix/skew/move/spx/vix_3m). Top-level keys: ' + topKeys + '. Macro container keys: ' + macroKeys);
+        throw new Error('No recognizable macro fields (vix/vvix/skew/move/spx). Top-level keys: ' + topKeys + '. Macro container keys: ' + macroKeys);
       }
 
       const items = [
