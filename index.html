@@ -161,41 +161,6 @@
   .macro-item .lbl{ font-size:9px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; font-family:var(--mono); }
   .macro-item .v{ font-family:var(--mono); font-size:12.5px; font-weight:600; color:var(--skyblue); }
 
-  /* ---------- 0DTE squeeze score panel ---------- */
-  .squeeze-panel{
-    display:none; padding:12px 34px 12px 14px; border-bottom:1px solid var(--border-soft);
-    background:var(--panel); position:relative;
-  }
-  .sq-main{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
-  .sq-ring-wrap{ position:relative; width:74px; height:74px; flex-shrink:0; }
-  .sq-ring-wrap svg{ width:74px; height:74px; }
-  .sq-ring-num{
-    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    font-family:var(--mono); font-weight:700; font-size:19px; line-height:1;
-  }
-  .sq-ring-num .sq-ring-max{ font-size:9px; font-weight:400; color:var(--text-faint); margin-top:1px; }
-  .sq-info{ flex:1; min-width:200px; }
-  .sq-direction{ font-family:var(--mono); font-weight:700; font-size:13px; letter-spacing:0.3px; margin-bottom:3px; }
-  .sq-summary{ font-size:12px; color:var(--text-dim); line-height:1.5; }
-  .sq-factors{
-    display:grid; grid-template-columns:1fr; gap:6px; margin-top:12px;
-  }
-  .sq-factor{ background:var(--panel2); border:1px solid var(--border-soft); border-radius:7px; padding:6px 9px; }
-  .sq-f-hdr{ display:flex; justify-content:space-between; align-items:baseline; font-family:var(--mono); font-size:9.5px; }
-  .sq-f-name{ color:var(--text-faint); text-transform:uppercase; letter-spacing:0.4px; }
-  .sq-f-val{ font-weight:700; }
-  .sq-f-bar{ height:3px; background:var(--border); border-radius:2px; margin:4px 0; overflow:hidden; }
-  .sq-f-fill{ height:100%; border-radius:2px; }
-  .sq-f-desc{ font-size:10.5px; color:var(--text-dim); line-height:1.4; }
-  .sq-f-desc .sub{ opacity:0.75; }
-  .sq-maxpain{
-    font-size:10.5px; color:var(--gold); margin-top:8px; padding:5px 8px;
-    background:rgba(240,192,64,.08); border-radius:5px; border:1px solid rgba(240,192,64,.2);
-  }
-  @media (min-width:900px){
-    .sq-factors{ grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:8px; }
-  }
-
   /* ---------- Zero-data diagnostic banner ---------- */
   .zero-data-notice{
     display:none; align-items:center; justify-content:space-between; gap:10px;
@@ -535,7 +500,6 @@
       <button class="small" id="loadSurgeBtn">Load Hot</button>
       <button class="small" id="loadNarrativeBtn">Load Narrative</button>
       <button class="small" id="loadMacroBtn">Load Macro</button>
-      <button class="small" id="loadSqueezeBtn">Load Squeeze</button>
       <div class="metric" id="mvcPillWrap"><div class="lbl">MVC ★</div><div class="v gold" id="mMvc">—</div><div class="sub" id="mMvcSub"></div></div>
     </div>
 
@@ -561,11 +525,6 @@
 <div class="macro-panel" id="macroPanel" style="display:none;">
   <button class="narrative-close" id="macroCloseBtn" title="Hide macro">✕</button>
   <div class="macro-grid" id="macroGrid"></div>
-</div>
-
-<div class="squeeze-panel" id="squeezePanel" style="display:none;">
-  <button class="narrative-close" id="squeezeCloseBtn" title="Hide squeeze score">✕</button>
-  <div id="squeezeContent"></div>
 </div>
 
 <div class="narrative-panel" id="narrativePanel" style="display:none;">
@@ -1157,11 +1116,18 @@
     }
   }
 
+  // Confirmed from FlashAlpha's documented field taxonomy: the macro object's fields are
+  // flat — vix, vvix, skew, spx, move, vix_3m, vix_term_slope — not nested under a
+  // vix_term_structure.levels object like earlier guesses assumed. That mismatch is why
+  // VVIX/SKEW/MOVE/SPX/Term never populated before.
   const MACRO_FIELD_ALIASES = {
-    vvix: ['vvix','VVIX'],
-    skew: ['skew','SKEW','skew_index'],
-    move: ['move','MOVE','move_index'],
-    spx:  ['spx','SPX','spx_price'],
+    vix:   ['vix','VIX'],
+    vvix:  ['vvix','VVIX'],
+    skew:  ['skew','SKEW','skew_index'],
+    move:  ['move','MOVE','move_index'],
+    spx:   ['spx','SPX','spx_price'],
+    vix3m: ['vix_3m','vix3m'],
+    slope: ['vix_term_slope','term_slope'],
   };
   function pickField(obj, names){
     if(!obj) return undefined;
@@ -1185,33 +1151,34 @@
     btn.disabled = true;
     try{
       const res = await fa('/v1/stock/' + encodeURIComponent(state.ticker) + '/summary');
-      // Confirmed shape: res.vix_term_structure = { levels:{vix9d,vix,vix3m,vix6m}, near_slope_pct, structure }
-      // VIX itself lives inside that nested object, not as a top-level field.
       const container = res.macro || res.macro_context || res.market || res.market_context || res.context || res;
-      const termObj = container.vix_term_structure || container.term_structure || container.vix_term || container.termStructure
-        || res.vix_term_structure || res.term_structure || res.vix_term || res.termStructure;
 
-      const vix  = toNum(termObj && termObj.levels && termObj.levels.vix);
-      const vvix = toNum(pickField(container, MACRO_FIELD_ALIASES.vvix));
-      const skew = toNum(pickField(container, MACRO_FIELD_ALIASES.skew));
-      const move = toNum(pickField(container, MACRO_FIELD_ALIASES.move));
-      const spx  = toNum(pickField(container, MACRO_FIELD_ALIASES.spx));
+      const vix   = toNum(pickField(container, MACRO_FIELD_ALIASES.vix));
+      const vvix  = toNum(pickField(container, MACRO_FIELD_ALIASES.vvix));
+      const skew  = toNum(pickField(container, MACRO_FIELD_ALIASES.skew));
+      const move  = toNum(pickField(container, MACRO_FIELD_ALIASES.move));
+      const spx   = toNum(pickField(container, MACRO_FIELD_ALIASES.spx));
+      const vix3m = toNum(pickField(container, MACRO_FIELD_ALIASES.vix3m));
+      const slope = toNum(pickField(container, MACRO_FIELD_ALIASES.slope));
 
+      // Term structure derived from vix vs vix_3m (or the slope field directly, if present)
+      // rather than a separate structure/label field — the docs don't list one.
       let termLabel = '—';
-      if(termObj && typeof termObj === 'object'){
-        const structure = termObj.structure ? String(termObj.structure) : null;
-        const slope = toNum(termObj.near_slope_pct);
-        if(structure){
-          termLabel = structure.charAt(0).toUpperCase() + structure.slice(1);
-          if(slope != null) termLabel += ` (${slope > 0 ? '+' : ''}${slope.toFixed(1)}%)`;
-        }
+      let slopeVal = slope;
+      if(slopeVal == null && vix != null && vix3m != null && vix !== 0){
+        slopeVal = ((vix3m - vix) / vix) * 100;
+      }
+      if(slopeVal != null){
+        const structure = slopeVal > 0 ? 'Contango' : slopeVal < 0 ? 'Backwardation' : 'Flat';
+        const slopePct = Math.abs(slopeVal) <= 3 ? slopeVal * 100 : slopeVal; // fraction vs already-percent
+        termLabel = structure + ' (' + (slopePct > 0 ? '+' : '') + slopePct.toFixed(1) + '%)';
       }
 
-      const found = [vix, vvix, skew, move, spx].some(v => v !== null) || termLabel !== '—';
+      const found = [vix, vvix, skew, move, spx, vix3m].some(v => v !== null);
       if(!found){
         const topKeys = Object.keys(res).join(', ');
         const macroKeys = (container !== res) ? Object.keys(container).join(', ') : '(no separate macro/market container found)';
-        throw new Error('No recognizable macro fields (vix_term_structure/vvix/skew/move/spx). Top-level keys: ' + topKeys + '. Macro container keys: ' + macroKeys);
+        throw new Error('No recognizable macro fields (vix/vvix/skew/move/spx/vix_3m). Top-level keys: ' + topKeys + '. Macro container keys: ' + macroKeys);
       }
 
       const items = [
@@ -1280,183 +1247,6 @@
     }
   }
 
-  // ══════════════════════════════════════════════════════════
-  // 0DTE SQUEEZE SCORE — ported from an earlier standalone dashboard, with one fix:
-  // VEX must be scoped to the same nearest expiration as the 0DTE GEX factor (the original
-  // pulled VEX with no ?expiration= filter — aggregate across the whole chain — which mixed
-  // today's gamma regime with weeks-out vanna exposure). DEX/CHEX are intentionally not used;
-  // the score only ever needed GEX + VEX.
-  // ══════════════════════════════════════════════════════════
-  // Uses /v1/exposure/zero-dte/{symbol} — a single call that bundles net_gex, net_vex, and
-  // pct_of_total_gex from the SAME 0DTE payload, so GEX and VEX can never end up scoped to
-  // different expirations. Also gives max_pain directly, so no separate call for that either.
-  function calcSqueezeScore(zdte){
-    if(!zdte || zdte.no_zero_dte) return null;
-    const spot = zdte.underlying_price;
-    const st0 = zdte.strikes || [];
-    if(!st0.length || spot == null) return null;
-
-    // FACTOR 1 — GEX REGIME (0DTE): negative = dealers short gamma = moves amplified
-    const exp = zdte.exposures || {};
-    const ngex0 = typeof exp.net_gex === 'number' ? exp.net_gex : st0.reduce((a, b) => a + (b.net_gex || 0), 0);
-    const negGex0 = ngex0 < 0;
-    const f1score = negGex0 ? 25 : 0;
-    const f1label = negGex0 ? 'NEG GEX — AMPLIFYING' : 'POS GEX — PINNING';
-    const f1color = negGex0 ? 'var(--orange)' : 'var(--blue)';
-    const f1pct = negGex0 ? 100 : 0;
-    const f1desc = negGex0 ? 'Dealers SHORT gamma — moves accelerate beyond key levels' : 'Dealers LONG gamma — price gravitates toward MVC';
-
-    // FACTOR 2 — VEX SIGNAL, from the SAME 0DTE payload as factor 1 — never a different expiration
-    const haveVex = typeof exp.net_vex === 'number';
-    const nvex = haveVex ? exp.net_vex : 0;
-    const posVex = nvex > 0;
-    const vexMag = Math.min(Math.abs(nvex) / 1e9, 1);
-    const f2score = Math.round(vexMag * 20);
-    const f2label = posVex ? 'VEX+ — VOL BULLISH' : 'VEX− — VOL BEARISH';
-    const f2color = posVex ? 'var(--blue)' : 'var(--orange)';
-    const f2pct = Math.round(vexMag * 100);
-    const f2desc = posVex ? 'Rising vol forces dealer BUYING — bullish feedback' : 'Rising vol forces dealer SELLING — bearish feedback';
-
-    // FACTOR 3 — 0DTE ACCEL: today's gamma as a share of the full chain's gamma — given directly
-    const accel = typeof exp.pct_of_total_gex === 'number' ? Math.min(Math.max(exp.pct_of_total_gex / 100, 0), 1) : 0;
-    const f3score = Math.round(accel * 25);
-    const f3pct = Math.round(accel * 100);
-    const f3label = accel > 0.7 ? 'HIGH 0DTE DOMINANCE' : accel > 0.4 ? 'MODERATE 0DTE' : 'LOW 0DTE';
-    const f3color = accel > 0.7 ? 'var(--orange)' : accel > 0.4 ? 'var(--gold)' : 'var(--text-faint)';
-    const f3desc = '0DTE gamma as % of total: ' + Math.round(accel * 100) + '% — higher = more aggressive intraday hedging';
-
-    // FACTOR 4 — PATH RESISTANCE: GEX density between spot and the wall in the squeeze
-    // direction (Call Wall if squeezing up, Put Wall if squeezing down) — NOT always "MVC".
-    // MVC is just the single largest |GEX| strike on the whole chain and can land on either
-    // side of spot; forcing the path toward it regardless of squeeze direction produced
-    // nonsense (e.g. "bull squeeze toward MVC" when MVC actually sits below spot). Call/Put
-    // Wall are, by definition, always on the correct side.
-    const sortedSt = [...st0].sort((a, b) => a.strike - b.strike);
-    const goingUp = posVex;
-    let airScore = 0, airPct = 0, airLabel = '', airColor = 'var(--text-faint)', wallLabel = 'wall';
-    const sideStrikes = goingUp ? sortedSt.filter(s => s.strike > spot) : sortedSt.filter(s => s.strike < spot);
-    if(sideStrikes.length){
-      const wallNode = goingUp
-        ? sideStrikes.reduce((a, b) => (b.net_gex || 0) > (a.net_gex || 0) ? b : a)   // Call Wall: most positive GEX above spot
-        : sideStrikes.reduce((a, b) => (b.net_gex || 0) < (a.net_gex || 0) ? b : a);  // Put Wall: most negative GEX below spot
-      wallLabel = goingUp ? 'CALL WALL' : 'PUT WALL';
-      const between = goingUp
-        ? sortedSt.filter(s => s.strike > spot && s.strike < wallNode.strike)
-        : sortedSt.filter(s => s.strike < spot && s.strike > wallNode.strike);
-      const totalGexBetween = between.reduce((a, b) => a + Math.abs(b.net_gex || 0), 0);
-      const avgGex0dte = sortedSt.reduce((a, b) => a + Math.abs(b.net_gex || 0), 0) / sortedSt.length;
-      const resistance = avgGex0dte > 0 ? Math.min(totalGexBetween / (avgGex0dte * (between.length || 1)), 1) : 0;
-      const airPctCalc = Math.max(0, 1 - resistance);
-      airScore = Math.round(airPctCalc * 20);
-      airPct = Math.round(airPctCalc * 100);
-      const distPct = Math.abs(wallNode.strike - spot) / spot * 100;
-      airLabel = (airPct > 70 ? 'VOID — ' : 'RESISTANCE — ') + distPct.toFixed(1) + '% TO ' + wallLabel;
-      airColor = airPct > 70 ? 'var(--skyblue)' : 'var(--text-faint)';
-    } else {
-      // No strikes at all on the squeeze-direction side of spot (rare — thin/edge-of-chain data)
-      airLabel = 'NO ' + (goingUp ? 'CALL' : 'PUT') + ' WALL DATA ABOVE/BELOW SPOT';
-    }
-    const f4desc = 'GEX density between spot and the ' + wallLabel.toLowerCase() + ' in the squeeze direction — void (air pocket) = squeeze can run farther';
-
-
-    const rawScore = f1score + f2score + f3score + airScore;
-    const score = Math.min(100, rawScore);
-
-    let direction, dirClass, summary;
-    if(!negGex0){
-      direction = '📌 PINNING MODE'; dirClass = 'pin';
-      summary = 'Dealers are LONG gamma. Price will mean-revert toward MVC. Avoid momentum plays — fade the extremes, sell premium.';
-    } else if(score >= 60){
-      if(posVex){
-        direction = '🚀 BULL SQUEEZE SETUP'; dirClass = 'bull';
-        summary = 'Neg GEX + pos VEX + low resistance above. If vol spikes, dealers FORCED to buy. Watch for explosive move toward the call wall.';
-      } else {
-        direction = '🔻 BEAR SQUEEZE SETUP'; dirClass = 'bear';
-        summary = 'Neg GEX + neg VEX + low resistance below. If vol spikes, dealers FORCED to sell. Watch for accelerated move toward the put wall.';
-      }
-    } else if(score >= 35){
-      direction = '⚡ ELEVATED PRESSURE'; dirClass = posVex ? 'bull' : 'bear';
-      summary = 'Conditions partially aligned for a directional squeeze. Monitor for confirmation — vol expansion or OI buildup at key strikes.';
-    } else {
-      direction = '〜 LOW SQUEEZE RISK'; dirClass = 'neutral';
-      summary = 'Conditions not aligned for a squeeze. GEX structure does not support explosive move right now.';
-    }
-
-    const maxPainStrike = zdte.pin_risk ? zdte.pin_risk.max_pain : null;
-    let maxPainNote = '';
-    if(maxPainStrike != null && spot){
-      const mpDist = Math.abs(maxPainStrike - spot) / spot * 100;
-      maxPainNote = mpDist < 0.3 ? 'At max pain — expiry pin risk HIGH.'
-        : mpDist < 1.0 ? 'Near max pain (' + mpDist.toFixed(1) + '% away).'
-        : 'Max pain at $' + formatStrike(maxPainStrike) + ' (' + mpDist.toFixed(1) + '% away).';
-    }
-
-    return {
-      score, direction, dirClass, summary, maxPainNote, haveVex,
-      factors: [
-        {name:'GEX Regime', val:f1label, color:f1color, pct:f1pct, score:f1score, max:25, desc:f1desc},
-        {name:'VEX Signal', val:f2label, color:f2color, pct:f2pct, score:f2score, max:20, desc:f2desc},
-        {name:'0DTE Accel', val:f3label, color:f3color, pct:f3pct, score:f3score, max:25, desc:f3desc},
-        {name:'Path Resistance', val:airLabel, color:airColor, pct:airPct, score:airScore, max:20, desc:f4desc},
-      ]
-    };
-  }
-
-  function buildSqueezeScoreHtml(sq){
-    if(!sq) return '';
-    const r = 32, circ = 2 * Math.PI * r;
-    const dash = (sq.score / 100 * circ).toFixed(1);
-    const gap = (circ - parseFloat(dash)).toFixed(1);
-    const ringColor = sq.dirClass === 'bull' ? 'var(--blue)' : sq.dirClass === 'bear' ? 'var(--orange)'
-      : sq.dirClass === 'pin' ? 'var(--gold)' : 'var(--text-faint)';
-    const ring = `<svg viewBox="0 0 72 72">
-      <circle cx="36" cy="36" r="${r}" fill="none" stroke="var(--border)" stroke-width="6"/>
-      <circle cx="36" cy="36" r="${r}" fill="none" stroke="${ringColor}" stroke-width="6"
-        stroke-dasharray="${dash} ${gap}" stroke-linecap="round" transform="rotate(-90 36 36)"/>
-    </svg>`;
-    const factorsHtml = sq.factors.map(f => `
-      <div class="sq-factor">
-        <div class="sq-f-hdr"><span class="sq-f-name">${escapeHtml(f.name)}</span><span class="sq-f-val" style="color:${f.color}">${f.score}/${f.max}</span></div>
-        <div class="sq-f-bar"><div class="sq-f-fill" style="width:${f.pct}%;background:${f.color}"></div></div>
-        <div class="sq-f-desc">${escapeHtml(f.val)}<br><span class="sub">${escapeHtml(f.desc)}</span></div>
-      </div>`).join('');
-    const mpHtml = sq.maxPainNote ? `<div class="sq-maxpain">📍 ${escapeHtml(sq.maxPainNote)}</div>` : '';
-    const vexNote = sq.haveVex ? '' : `<div class="sq-maxpain" style="color:var(--text-faint);border-color:var(--border);background:transparent;">This response had no net_vex field — treat the VEX Signal factor's score loosely.</div>`;
-    return `<div class="sq-main">
-      <div class="sq-ring-wrap">${ring}<div class="sq-ring-num" style="color:${ringColor}">${sq.score}<span class="sq-ring-max">/100</span></div></div>
-      <div class="sq-info">
-        <div class="sq-direction" style="color:${ringColor}">${sq.direction}</div>
-        <div class="sq-summary">${escapeHtml(sq.summary)}</div>
-      </div>
-    </div>
-    <div class="sq-factors">${factorsHtml}</div>
-    ${mpHtml}${vexNote}`;
-  }
-
-  async function loadSqueeze(){
-    if(!state.ticker) return;
-    const btn = $('loadSqueezeBtn');
-    const origText = btn.textContent;
-    btn.textContent = 'Loading…';
-    btn.disabled = true;
-    try{
-      const zdte = await fa('/v1/exposure/zero-dte/' + encodeURIComponent(state.ticker) + '?strike_range=0.05');
-      if(zdte.no_zero_dte){
-        throw new Error(zdte.message || (state.ticker + ' has no 0DTE expiry today.'));
-      }
-      const sq = calcSqueezeScore(zdte);
-      if(!sq) throw new Error('Could not compute a score from the data returned — spot price or 0DTE strikes missing.');
-
-      $('squeezeContent').innerHTML = buildSqueezeScoreHtml(sq);
-      $('squeezePanel').style.display = 'block';
-      btn.textContent = 'Reload Squeeze';
-    }catch(err){
-      alert('Squeeze score failed: ' + err.message);
-      btn.textContent = origText;
-    }finally{
-      btn.disabled = false;
-    }
-  }
 
   const NARRATIVE_COLOR_CLASS = {
     regime: 'narr-regime', gex_change: 'narr-gex_change', key_levels: 'narr-key_levels',
@@ -2110,10 +1900,6 @@
   $('loadMacroBtn').addEventListener('click', loadMacro);
   $('macroCloseBtn').addEventListener('click', () => {
     $('macroPanel').style.display = 'none';
-  });
-  $('loadSqueezeBtn').addEventListener('click', loadSqueeze);
-  $('squeezeCloseBtn').addEventListener('click', () => {
-    $('squeezePanel').style.display = 'none';
   });
   $('narrativeCloseBtn').addEventListener('click', () => {
     $('narrativePanel').style.display = 'none';
