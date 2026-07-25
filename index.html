@@ -413,8 +413,6 @@
 
     /* symbol entry now lives in the rail — hide the header's copy, freeing up header space */
     #tickerForm #tickerInput, #tickerForm #favBtn, #tickerForm #loadBtn{ display:none; }
-    /* replaced by the bigger MVC · Day / MVC · Week hero cards below */
-    #mvcPillWrap{ display:none; }
 
     .metric-hero{
       background:var(--panel2); border:1px solid var(--border); border-radius:8px;
@@ -500,7 +498,6 @@
       <button class="small" id="loadSurgeBtn">Load Hot</button>
       <button class="small" id="loadNarrativeBtn">Load Narrative</button>
       <button class="small" id="loadMacroBtn">Load Macro</button>
-      <div class="metric" id="mvcPillWrap"><div class="lbl">MVC ★</div><div class="v gold" id="mMvc">—</div><div class="sub" id="mMvcSub"></div></div>
     </div>
 
     <div class="budget-readout" id="budgetReadout">req today: 0/2400</div>
@@ -1404,25 +1401,24 @@
       chipEl.textContent = '';
     }
 
-    // overall MVC across all currently-loaded expirations (aggregate |net GEX| by strike)
-    const aggByStrike = {};
-    Object.values(state.gexByExp).forEach(d => {
+    // MVC · Week — the single biggest individual |net GEX| cell across all currently-loaded
+    // expirations (one specific day + strike), NOT the sum of a strike's GEX across every day.
+    // Summing across days was misleading: a strike could show as "MVC" purely from adding up
+    // several mediocre days, even when some other single day/strike combo was far larger on
+    // its own — exactly the $720 (summed) vs Friday $740 (actual single biggest day) mismatch.
+    let weekStrike = null, weekVal = 0, weekAbs = -1, weekExp = null;
+    Object.entries(state.gexByExp).forEach(([exp, d]) => {
       if(!d || !d.strikes) return;
-      d.strikes.forEach(s => { aggByStrike[s.strike] = (aggByStrike[s.strike] || 0) + (s.net_gex || 0); });
+      d.strikes.forEach(s => {
+        const v = s.net_gex || 0;
+        if(Math.abs(v) > weekAbs){ weekAbs = Math.abs(v); weekStrike = s.strike; weekVal = v; weekExp = exp; }
+      });
     });
-    let mvcStrike = null, mvcAbs = -1, mvcVal = 0;
-    Object.entries(aggByStrike).forEach(([k,v]) => {
-      if(Math.abs(v) > mvcAbs){ mvcAbs = Math.abs(v); mvcStrike = parseFloat(k); mvcVal = v; }
-    });
-    state.mvcStrike = mvcStrike;
-    $('mMvc').textContent = mvcStrike != null ? formatStrike(mvcStrike) : '—';
-    $('mMvcSub').textContent = mvcStrike != null ? fmtMoney(mvcVal) : '';
-    // desktop hero card mirrors the same aggregate value — "week" here means whatever's
-    // currently loaded (all of this week's expirations in Week mode, one day in 0DTE mode)
+    state.mvcStrike = weekStrike;
     const mMvcWeek = document.getElementById('mMvcWeek');
     const mMvcWeekSub = document.getElementById('mMvcWeekSub');
-    if(mMvcWeek) mMvcWeek.textContent = mvcStrike != null ? formatStrike(mvcStrike) : '—';
-    if(mMvcWeekSub) mMvcWeekSub.textContent = mvcStrike != null ? fmtMoney(mvcVal) : '';
+    if(mMvcWeek) mMvcWeek.textContent = weekStrike != null ? formatStrike(weekStrike) : '—';
+    if(mMvcWeekSub) mMvcWeekSub.textContent = weekStrike != null ? (fmtMoney(weekVal) + (weekExp ? ' · ' + formatExpHeader(weekExp) : '')) : '';
 
     // "day" MVC — the nearest single expiration's own largest |GEX| strike, independent of
     // whichever expirations happen to be loaded for the current view mode.
