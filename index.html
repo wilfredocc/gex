@@ -230,6 +230,8 @@
   }
   table.gex-grid tbody td:hover{ outline:1.5px solid var(--text); outline-offset:-1.5px; }
   table.gex-grid tbody td .cellval{ font-size:10.5px; }
+  .diff-val{ font-weight:700; }
+  td.diff-stale-cell{ opacity:0.4; }
   table.gex-grid tbody td.empty{ color:var(--text-faint); cursor:default; }
   table.gex-grid tbody td.empty:hover{ outline:none; }
 
@@ -504,6 +506,7 @@
     <div class="control-group">
       <button class="small" id="loadIvBtn">Load IV / EM</button>
       <button class="small" id="loadSurgeBtn">Load Hot</button>
+      <button class="toggle small" id="liveDiffBtn">Diff: Off</button>
       <button class="small" id="loadNarrativeBtn">Load Narrative</button>
       <button class="small" id="loadMacroBtn">Load Macro</button>
     </div>
@@ -561,6 +564,7 @@
     <span>· <span style="color:var(--text-faint)">≈</span> Void = air pocket (thin GEX, low resistance)</span>
     <span>· <span style="color:var(--indigo)">⇄</span> Reversal = per-expiration: heaviest opposite-sign strike within that same column vs its own MVC</span>
     <span>· <span style="color:var(--amber)">⚡</span> Hot = 0DTE (or next expiry) strike where live flow-GEX has diverged most from this morning's settled GEX (tap "Load Hot")</span>
+    <span>· "Diff: On" recolors the whole grid by live-vs-settled GEX divergence per cell (Δ value shown) instead of raw GEX — dimmed cells have no diff data loaded for that column yet</span>
     <span>· <span style="color:var(--lime)">⊕</span> Magnet = 0DTE pin target into the close (only in 0DTE mode)</span>
     <span>· <span style="color:var(--skyblue)">◆1x/1.5x/2x</span> = strike nearest that multiple of expected move from spot (tap "Load IV / EM")</span>
     <span>· gold OPEX badge = monthly options expiration (3rd Friday)</span>
@@ -622,6 +626,8 @@
     pollTimer: null,
     busy: false,
     gexByExp: {},
+    liveDiffOn: false,
+    liveDiffByExp: {},
     levels: null,
     pinRisk: null,
     pinRiskError: null,
@@ -1136,6 +1142,83 @@
     }
   }
 
+  async function toggleLiveDiff(){
+    const btn = $('liveDiffBtn');
+    if(state.liveDiffOn){
+      // Turning off costs nothing — just stop showing the overlay, keep the fetched data
+      // cached in case it's turned back on for the same columns.
+      state.liveDiffOn = false;
+      btn.textContent = 'Diff: Off';
+      btn.classList.remove('active');
+      render();
+      return;
+    }
+    if(!state.ticker || !state.selectedExpirations.length){
+      alert('Load the grid first, then Live Diff.');
+      return;
+    }
+    const origText = btn.textContent;
+    btn.textContent = 'Loading…';
+    btn.disabled = true;
+    try{
+      // One live flow-GEX call per currently visible column, diffed against the settled
+      // snapshot already sitting in state.gexByExp from the normal grid load — no need to
+      // re-fetch settled data. This paints the WHOLE grid by live-vs-settled divergence,
+      // the same comparison Hot already does for a single strike, just for every cell.
+      const results = await Promise.all(state.selectedExpirations.map(e =>
+        fa('/v1/flow/gex/' + encodeURIComponent(state.ticker) + '?expiration=' + e)
+          .then(r => ({exp: e, data: r}))
+          .catch(err => ({exp: e, error: err.message}))
+      ));
+
+      const anySuccess = results.some(r => r.data);
+      if(!anySuccess){
+        const firstErr = results.find(r => r.error);
+        throw new Error('All requests failed. ' + (firstErr ? firstErr.error : ''));
+      }
+
+      const liveDiffByExp = {};
+      let anyNonZero = false;
+      results.forEach(r => {
+        if(!r.data || !r.data.strikes) return;
+        const settled = state.gexByExp[r.exp];
+        const settledByStrike = {};
+        if(settled && settled.strikes){
+          settled.strikes.forEach(s => { settledByStrike[s.strike] = s.net_gex || 0; });
+        }
+        const byStrike = {};
+        r.data.strikes.forEach(s => {
+          const liveVal = s.net_gex || 0;
+          const settledVal = settledByStrike[s.strike] || 0;
+          const delta = liveVal - settledVal;
+          if(delta !== 0) anyNonZero = true;
+          byStrike[s.strike] = delta;
+        });
+        liveDiffByExp[r.exp] = byStrike;
+      });
+
+      // Diagnostic: if every diff came back as exactly 0 across every column, that's much
+      // more likely a field-name mismatch (comparing 0 to 0 on both sides) than a genuinely
+      // flat market across the whole visible week.
+      if(!anyNonZero){
+        const sample = results.find(r => r.data && r.data.strikes && r.data.strikes.length);
+        const sampleKeys = sample ? Object.keys(sample.data.strikes[0]).join(', ') : '(no sample available)';
+        throw new Error('Every live-vs-settled delta came back as 0 across all visible columns — likely a field-name mismatch rather than a flat market. Sample live strike keys: ' + sampleKeys);
+      }
+
+      state.liveDiffByExp = liveDiffByExp;
+      state.liveDiffOn = true;
+      btn.textContent = 'Diff: On';
+      btn.classList.add('active');
+      render();
+    }catch(err){
+      alert('Live Diff failed: ' + err.message);
+      btn.textContent = origText;
+    }finally{
+      btn.disabled = false;
+    }
+  }
+
   // Confirmed from FlashAlpha's documented field taxonomy: the macro object's fields are
   // flat — vix, vvix, skew, spx, move, vix_3m, vix_term_slope — not nested under a
   // vix_term_structure.levels object like earlier guesses assumed. That mismatch is why
@@ -1570,6 +1653,19 @@
     const maxAbs = percentile(visibleVals, 0.92) || 1;
     const netVals = strikes.map(s => Math.abs(netByStrike[s] || 0));
     const netMaxAbs = percentile(netVals, 0.92) || 1;
+
+    // Live-vs-settled diff: same percentile-based scaling as raw GEX, but computed only over
+    // whatever's currently visible so the overlay's color intensity stays meaningful even if
+    // Diff was loaded for a different set of columns than what's shown now.
+    let maxAbsDelta = 1;
+    if(state.liveDiffOn){
+      const visibleDeltas = [];
+      strikes.forEach(st => exps.forEach(e => {
+        const byStrike = state.liveDiffByExp[e];
+        if(byStrike && byStrike[st] !== undefined) visibleDeltas.push(Math.abs(byStrike[st]));
+      }));
+      maxAbsDelta = percentile(visibleDeltas, 0.92) || 1;
+    }
     const strikeBaseline = getOrSetStrikeBaseline(netByStrike);
 
     // Biggest Building / Fading strike (largest positive / negative % change vs first snapshot today)
@@ -1783,16 +1879,25 @@
         if(!c){
           html += `<td class="empty">—</td>`;
         } else {
-          const bg = gexColor(c.net_gex || 0, maxAbs);
+          const byStrike = state.liveDiffOn ? state.liveDiffByExp[e] : null;
+          const hasDelta = byStrike && byStrike[strike] !== undefined;
+          const delta = hasDelta ? byStrike[strike] : null;
+          // In Diff mode: color and primary value come from live-vs-settled divergence.
+          // Cells with no diff data yet (column wasn't loaded when Diff was toggled on)
+          // fall back to showing raw GEX, dimmed, so the grid doesn't show blank gaps.
+          const bg = (state.liveDiffOn && hasDelta) ? gexColor(delta, maxAbsDelta) : gexColor(c.net_gex || 0, maxAbs);
           const isMvcCell = expMeta[e].mvcStrike === strike;
           const isReversalCell = expMeta[e].reversalStrike === strike;
           const isBump2Cell = bump2Exp === e && bump2Strike === strike;
           const oiChange = (c.call_oi_change || 0) + (c.put_oi_change || 0);
           const arrow = oiChange > 0 ? '<span class="oi-up">▲</span>' : (oiChange < 0 ? '<span class="oi-down">▼</span>' : '');
-          const cellCls = [isMvcCell ? 'mvc-cell' : '', isReversalCell ? 'reversal-cell' : '', isBump2Cell ? 'bump2-cell' : ''].filter(Boolean).join(' ');
+          const cellCls = [isMvcCell ? 'mvc-cell' : '', isReversalCell ? 'reversal-cell' : '', isBump2Cell ? 'bump2-cell' : '', (state.liveDiffOn && !hasDelta) ? 'diff-stale-cell' : ''].filter(Boolean).join(' ');
           const reversalTagHtml = isReversalCell ? '<span class="reversal-cell-tag" title="Reversal — heaviest opposite-sign strike in this expiration">⇄</span>' : '';
           const bump2TagHtml = isBump2Cell ? '<span class="bump2-cell-tag" title="Bump2 — heaviest GEX strike between spot and MVC, today only">‖</span>' : '';
-          html += `<td class="${cellCls}" style="background:${bg}" data-strike="${strike}" data-exp="${e}"><div class="cellval">${reversalTagHtml}${bump2TagHtml}${fmtMoney(c.net_gex)}${arrow}</div></td>`;
+          const mainVal = (state.liveDiffOn && hasDelta)
+            ? `<span class="diff-val" title="Live flow-GEX minus this morning's settled GEX">Δ${fmtMoney(delta)}</span>`
+            : fmtMoney(c.net_gex);
+          html += `<td class="${cellCls}" style="background:${bg}" data-strike="${strike}" data-exp="${e}"><div class="cellval">${reversalTagHtml}${bump2TagHtml}${mainVal}${arrow}</div></td>`;
         }
       });
       const net = netByStrike[strike] || 0;
@@ -1948,6 +2053,7 @@
 
   $('loadIvBtn').addEventListener('click', loadIv);
   $('loadSurgeBtn').addEventListener('click', loadSurge);
+  $('liveDiffBtn').addEventListener('click', toggleLiveDiff);
   $('loadNarrativeBtn').addEventListener('click', loadNarrative);
   $('loadMacroBtn').addEventListener('click', loadMacro);
   $('macroCloseBtn').addEventListener('click', () => {
