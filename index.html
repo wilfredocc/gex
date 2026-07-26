@@ -556,7 +556,7 @@
     <span>· <span style="color:var(--green)">▲</span>/<span style="color:var(--red)">▼</span> = OI growing/shrinking that cell</span>
     <span>· <span style="color:var(--cyan)">◉</span> Pin = pin-risk target strike</span>
     <span>· <span style="color:var(--purple)">‖</span> Bump1 = gatekeeper (2nd-strongest node between spot and MVC, whole week)</span>
-    <span>· <span style="color:var(--magenta)">‖</span> Bump2 = per-expiration: 2nd-heaviest opposite-sign strike within that same column vs its own MVC</span>
+    <span>· <span style="color:var(--magenta)">‖</span> Bump2 = heaviest GEX strike between spot and MVC, today's expiration only</span>
     <span>· <span style="color:var(--rose)">⊙</span> Nie = midpoint between call wall and put wall (no-man's-land)</span>
     <span>· <span style="color:var(--text-faint)">≈</span> Void = air pocket (thin GEX, low resistance)</span>
     <span>· <span style="color:var(--indigo)">⇄</span> Reversal = per-expiration: heaviest opposite-sign strike within that same column vs its own MVC</span>
@@ -862,7 +862,7 @@
   }
 
   function computeExpiryMeta(d){
-    if(!d || !d.strikes || !d.strikes.length) return {callWall:null, putWall:null, mvcStrike:null, mvcAbs:0, flipStrike:null, reversalStrike:null, bump2Strike:null};
+    if(!d || !d.strikes || !d.strikes.length) return {callWall:null, putWall:null, mvcStrike:null, mvcAbs:0, flipStrike:null, reversalStrike:null};
     let callWall=null, callWallVal=-Infinity, putWall=null, putWallVal=Infinity, mvcStrike=null, mvcAbs=-1;
     d.strikes.forEach(s => {
       const ng = s.net_gex || 0;
@@ -885,13 +885,11 @@
       }
     }
 
-    // Per-expiration Reversal + Bump: within THIS SAME column, rank every strike whose sign
-    // is opposite the column's own MVC sign by |net GEX|. Reversal = the #1 (heaviest) —
-    // note this is mathematically the same strike as whichever wall (CW/PW) sits opposite
-    // MVC's sign, since "heaviest of a given sign" is exactly how CW/PW are defined too.
-    // Bump = the #2 (runner-up) opposite-sign strike — a genuinely distinct level from
-    // Reversal/CW/PW, replacing the old spot-to-MVC "gatekeeper" definition.
-    let reversalStrike = null, bump2Strike = null;
+    // Per-expiration Reversal: within THIS SAME column, the heaviest |net GEX| strike whose
+    // sign is opposite the column's own MVC sign — mathematically the same strike as
+    // whichever wall (CW/PW) sits opposite MVC's sign, since "heaviest of a given sign" is
+    // exactly how CW/PW are defined too.
+    let reversalStrike = null;
     if(mvcStrike != null){
       const mvcVal = d.strikes.find(s => s.strike === mvcStrike);
       const mvcSign = mvcVal && (mvcVal.net_gex || 0) < 0 ? -1 : 1;
@@ -899,10 +897,9 @@
         .filter(s => { const ng = s.net_gex || 0; const sign = ng < 0 ? -1 : 1; return sign !== mvcSign; })
         .sort((a, b) => Math.abs(b.net_gex || 0) - Math.abs(a.net_gex || 0));
       reversalStrike = oppositeSorted.length > 0 ? oppositeSorted[0].strike : null;
-      bump2Strike = oppositeSorted.length > 1 ? oppositeSorted[1].strike : null;
     }
 
-    return {callWall, putWall, mvcStrike, mvcAbs, flipStrike, reversalStrike, bump2Strike};
+    return {callWall, putWall, mvcStrike, mvcAbs, flipStrike, reversalStrike};
   }
 
   // session baseline (first snapshot of the day for this ticker) for build/fade chip
@@ -1719,6 +1716,28 @@
     const expMeta = {};
     exps.forEach(e => { expMeta[e] = computeExpiryMeta(state.gexByExp[e]); });
 
+    // Bump2 — a single cell, not one per column: the heaviest |net GEX| strike strictly
+    // between spot and MVC, scoped ONLY to today's (nearest) expiration. Only renders when
+    // that expiration is one of the currently visible columns.
+    let bump2Strike = null, bump2Exp = null;
+    {
+      const todayExp = state.selectedExpirations[0];
+      const todayData = todayExp ? state.gexByExp[todayExp] : null;
+      const todayMvc = todayExp ? expMeta[todayExp].mvcStrike : null;
+      if(todayData && todayData.strikes && todayMvc != null && state.spot != null && exps.includes(todayExp)){
+        const lo = Math.min(state.spot, todayMvc);
+        const hi = Math.max(state.spot, todayMvc);
+        let bestAbs = -1;
+        todayData.strikes.forEach(s => {
+          if(s.strike > lo && s.strike < hi && s.strike !== todayMvc){
+            const v = Math.abs(s.net_gex || 0);
+            if(v > bestAbs){ bestAbs = v; bump2Strike = s.strike; }
+          }
+        });
+        if(bump2Strike != null) bump2Exp = todayExp;
+      }
+    }
+
     const totalStrikes = state.strikeRange * 2;
     let html = `<table class="gex-grid"><thead><tr><th class="strike-head">
       <div class="strike-head-label">Strike</div>
@@ -1767,12 +1786,12 @@
           const bg = gexColor(c.net_gex || 0, maxAbs);
           const isMvcCell = expMeta[e].mvcStrike === strike;
           const isReversalCell = expMeta[e].reversalStrike === strike;
-          const isBump2Cell = expMeta[e].bump2Strike === strike;
+          const isBump2Cell = bump2Exp === e && bump2Strike === strike;
           const oiChange = (c.call_oi_change || 0) + (c.put_oi_change || 0);
           const arrow = oiChange > 0 ? '<span class="oi-up">▲</span>' : (oiChange < 0 ? '<span class="oi-down">▼</span>' : '');
           const cellCls = [isMvcCell ? 'mvc-cell' : '', isReversalCell ? 'reversal-cell' : '', isBump2Cell ? 'bump2-cell' : ''].filter(Boolean).join(' ');
           const reversalTagHtml = isReversalCell ? '<span class="reversal-cell-tag" title="Reversal — heaviest opposite-sign strike in this expiration">⇄</span>' : '';
-          const bump2TagHtml = isBump2Cell ? '<span class="bump2-cell-tag" title="Bump2 — runner-up opposite-sign strike in this expiration">‖</span>' : '';
+          const bump2TagHtml = isBump2Cell ? '<span class="bump2-cell-tag" title="Bump2 — heaviest GEX strike between spot and MVC, today only">‖</span>' : '';
           html += `<td class="${cellCls}" style="background:${bg}" data-strike="${strike}" data-exp="${e}"><div class="cellval">${reversalTagHtml}${bump2TagHtml}${fmtMoney(c.net_gex)}${arrow}</div></td>`;
         }
       });
