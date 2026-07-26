@@ -31,6 +31,7 @@
     --purple:#b98af0;
     --rose:#ff6fae;
     --indigo:#6c7aff;
+    --magenta:#e05fd1;
     --amber:#ffb347;
     --lime:#baff5f;
     --skyblue:#7dd3fc;
@@ -251,8 +252,13 @@
   tr.pin-row td:first-of-type{ }
   th.strike-cell .pin-tag{ color:var(--cyan); font-size:14px; margin-left:3px; }
 
-  tr.bump-row th.strike-cell{ border-left:3px solid var(--purple); }
-  th.strike-cell .bump-tag{ color:var(--purple); font-size:14px; margin-left:3px; }
+  tr.bump1-row th.strike-cell{ border-left:3px solid var(--purple); }
+  th.strike-cell .bump1-tag{ color:var(--purple); font-size:14px; margin-left:3px; }
+
+  /* Bump2 is a per-cell marker (runner-up opposite-sign strike per expiration) — distinct
+     magenta color from Bump1's purple so the two never get confused for one another */
+  td.bump2-cell{ outline:2px solid var(--magenta) !important; outline-offset:-2px; }
+  .bump2-cell-tag{ color:var(--magenta); font-size:11px; margin-right:3px; }
 
   tr.nie-row th.strike-cell{ border-left:3px solid var(--rose); }
   th.strike-cell .nie-tag{ color:var(--rose); font-size:14px; margin-left:3px; }
@@ -549,7 +555,8 @@
     <span>· <span style="color:var(--gold)">★</span> = MVC (largest |GEX| strike) · per-column ★ = that expiry's own MVC</span>
     <span>· <span style="color:var(--green)">▲</span>/<span style="color:var(--red)">▼</span> = OI growing/shrinking that cell</span>
     <span>· <span style="color:var(--cyan)">◉</span> Pin = pin-risk target strike</span>
-    <span>· <span style="color:var(--purple)">‖</span> Bump = gatekeeper (2nd-strongest node between spot and MVC)</span>
+    <span>· <span style="color:var(--purple)">‖</span> Bump1 = gatekeeper (2nd-strongest node between spot and MVC, whole week)</span>
+    <span>· <span style="color:var(--magenta)">‖</span> Bump2 = per-expiration: 2nd-heaviest opposite-sign strike within that same column vs its own MVC</span>
     <span>· <span style="color:var(--rose)">⊙</span> Nie = midpoint between call wall and put wall (no-man's-land)</span>
     <span>· <span style="color:var(--text-faint)">≈</span> Void = air pocket (thin GEX, low resistance)</span>
     <span>· <span style="color:var(--indigo)">⇄</span> Reversal = per-expiration: heaviest opposite-sign strike within that same column vs its own MVC</span>
@@ -855,7 +862,7 @@
   }
 
   function computeExpiryMeta(d){
-    if(!d || !d.strikes || !d.strikes.length) return {callWall:null, putWall:null, mvcStrike:null, mvcAbs:0, flipStrike:null, reversalStrike:null};
+    if(!d || !d.strikes || !d.strikes.length) return {callWall:null, putWall:null, mvcStrike:null, mvcAbs:0, flipStrike:null, reversalStrike:null, bump2Strike:null};
     let callWall=null, callWallVal=-Infinity, putWall=null, putWallVal=Infinity, mvcStrike=null, mvcAbs=-1;
     d.strikes.forEach(s => {
       const ng = s.net_gex || 0;
@@ -878,23 +885,24 @@
       }
     }
 
-    // Per-expiration Reversal: within THIS SAME column, the heaviest |net GEX| strike whose
-    // sign is opposite the column's own MVC sign — e.g. MVC negative (put-dominant) means
-    // Reversal is the heaviest positive (call-dominant) strike in that same column. This is
-    // now a per-column concept, matching MVC/CW/PW/Flip, not a single row tag for the whole week.
-    let reversalStrike = null;
+    // Per-expiration Reversal + Bump: within THIS SAME column, rank every strike whose sign
+    // is opposite the column's own MVC sign by |net GEX|. Reversal = the #1 (heaviest) —
+    // note this is mathematically the same strike as whichever wall (CW/PW) sits opposite
+    // MVC's sign, since "heaviest of a given sign" is exactly how CW/PW are defined too.
+    // Bump = the #2 (runner-up) opposite-sign strike — a genuinely distinct level from
+    // Reversal/CW/PW, replacing the old spot-to-MVC "gatekeeper" definition.
+    let reversalStrike = null, bump2Strike = null;
     if(mvcStrike != null){
       const mvcVal = d.strikes.find(s => s.strike === mvcStrike);
       const mvcSign = mvcVal && (mvcVal.net_gex || 0) < 0 ? -1 : 1;
-      let bestOppAbs = -1;
-      d.strikes.forEach(s => {
-        const ng = s.net_gex || 0;
-        const sign = ng < 0 ? -1 : 1;
-        if(sign !== mvcSign && Math.abs(ng) > bestOppAbs){ bestOppAbs = Math.abs(ng); reversalStrike = s.strike; }
-      });
+      const oppositeSorted = d.strikes
+        .filter(s => { const ng = s.net_gex || 0; const sign = ng < 0 ? -1 : 1; return sign !== mvcSign; })
+        .sort((a, b) => Math.abs(b.net_gex || 0) - Math.abs(a.net_gex || 0));
+      reversalStrike = oppositeSorted.length > 0 ? oppositeSorted[0].strike : null;
+      bump2Strike = oppositeSorted.length > 1 ? oppositeSorted[1].strike : null;
     }
 
-    return {callWall, putWall, mvcStrike, mvcAbs, flipStrike, reversalStrike};
+    return {callWall, putWall, mvcStrike, mvcAbs, flipStrike, reversalStrike, bump2Strike};
   }
 
   // session baseline (first snapshot of the day for this ticker) for build/fade chip
@@ -1642,9 +1650,12 @@
       strikes.forEach(s => { const diff = Math.abs(s - magnetVal); if(diff < best){ best = diff; magnetStrike = s; } });
     }
 
-    // Bump (gatekeeper node): 2nd-strongest |net GEX| strike sitting strictly between spot and the MVC.
-    // Price has to fight through this one before it can reach the MVC.
-    let bumpStrike = null;
+    // Bump1 (gatekeeper node): 2nd-strongest |net GEX| strike sitting strictly between spot
+    // and the week's MVC. Price has to fight through this one before it can reach the MVC.
+    // This is the original whole-week row tag — kept alongside the newer per-column Bump2
+    // (the runner-up opposite-sign strike, computed inside computeExpiryMeta()) since they're
+    // two genuinely different concepts the user wants both visible.
+    let bump1Strike = null;
     if(state.spot != null && state.mvcStrike != null){
       const lo = Math.min(state.spot, state.mvcStrike);
       const hi = Math.max(state.spot, state.mvcStrike);
@@ -1652,7 +1663,7 @@
       strikes.forEach(s => {
         if(s > lo && s < hi && s !== state.mvcStrike){
           const v = Math.abs(netByStrike[s] || 0);
-          if(v > bestAbs){ bestAbs = v; bumpStrike = s; }
+          if(v > bestAbs){ bestAbs = v; bump1Strike = s; }
         }
       });
     }
@@ -1734,20 +1745,20 @@
       const isAtm = strike === atmStrike;
       const isFlip = strike === flipStrike;
       const isPin = strike === pinStrike;
-      const isBump = strike === bumpStrike;
+      const isBump1 = strike === bump1Strike;
       const isNie = strike === nieStrike;
       const isSurge = state.surgeStrike != null && strike === state.surgeStrike;
       const isMagnet = magnetStrike != null && strike === magnetStrike;
       const isVoid = voidStrikes.has(strike);
       const emLabel = emBandStrikes[strike];
       const isMvcRow = strike === state.mvcStrike;
-      const rowClasses = [isAtm ? 'atm-row' : '', isFlip ? 'flip-row' : '', isPin ? 'pin-row' : '', isBump ? 'bump-row' : '', isNie ? 'nie-row' : '', isSurge ? 'surge-row' : '', isMagnet ? 'magnet-row' : '', isVoid ? 'void-row' : '', emLabel ? 'em-row' : ''].filter(Boolean).join(' ');
+      const rowClasses = [isAtm ? 'atm-row' : '', isFlip ? 'flip-row' : '', isPin ? 'pin-row' : '', isBump1 ? 'bump1-row' : '', isNie ? 'nie-row' : '', isSurge ? 'surge-row' : '', isMagnet ? 'magnet-row' : '', isVoid ? 'void-row' : '', emLabel ? 'em-row' : ''].filter(Boolean).join(' ');
       const chg = pctChangeBadge(netByStrike[strike] || 0, strikeBaseline[strike]);
       // vs-open change now lives in the Net GEX by strike column, keeping the strike column
-      // itself down to just the level tags. Reversal no longer appears here — it's a
-      // per-expiration cell marker now (see the exps.forEach loop below), since it's a
-      // different strike in every column, not one strike for the whole week.
-      html += `<tr class="${rowClasses}"><th class="strike-cell"><div class="strike-cell-inner"><span class="strike-tags">${isMvcRow ? '<span class="mvc-star" title="MVC — largest |GEX| strike">★</span>' : ''}${isAtm ? '<span class="spot-tag" title="Spot — current price">◀</span>' : ''}${isPin ? '<span class="pin-tag" title="Pin — pin-risk target strike">◉</span>' : ''}${isBump ? '<span class="bump-tag" title="Bump — gatekeeper node between spot and MVC">‖</span>' : ''}${isNie ? '<span class="nie-tag" title="Nie — midpoint between call wall and put wall">⊙</span>' : ''}${isSurge ? `<span class="surge-tag" title="Hot — biggest live-vs-settled GEX divergence today, ${state.surgeExp ? escapeHtml(state.surgeExp) : ''}">⚡</span>` : ''}${isMagnet ? '<span class="magnet-tag" title="Magnet — 0DTE pin target into the close">⊕</span>' : ''}${isVoid ? '<span class="void-tag" title="Void — air pocket, thin GEX">≈</span>' : ''}${emLabel ? `<span class="em-tag" title="${emLabel} expected move from spot">◆${emLabel}</span>` : ''}</span><span class="strike-num">${formatStrike(strike)}</span></div></th>`;
+      // itself down to just the level tags. Reversal and Bump no longer appear here — both
+      // are per-expiration cell markers now (see the exps.forEach loop below), since each is
+      // a different strike in every column, not one strike for the whole week.
+      html += `<tr class="${rowClasses}"><th class="strike-cell"><div class="strike-cell-inner"><span class="strike-tags">${isMvcRow ? '<span class="mvc-star" title="MVC — largest |GEX| strike">★</span>' : ''}${isAtm ? '<span class="spot-tag" title="Spot — current price">◀</span>' : ''}${isPin ? '<span class="pin-tag" title="Pin — pin-risk target strike">◉</span>' : ''}${isBump1 ? '<span class="bump1-tag" title="Bump1 — gatekeeper node between spot and MVC">‖</span>' : ''}${isNie ? '<span class="nie-tag" title="Nie — midpoint between call wall and put wall">⊙</span>' : ''}${isSurge ? `<span class="surge-tag" title="Hot — biggest live-vs-settled GEX divergence today, ${state.surgeExp ? escapeHtml(state.surgeExp) : ''}">⚡</span>` : ''}${isMagnet ? '<span class="magnet-tag" title="Magnet — 0DTE pin target into the close">⊕</span>' : ''}${isVoid ? '<span class="void-tag" title="Void — air pocket, thin GEX">≈</span>' : ''}${emLabel ? `<span class="em-tag" title="${emLabel} expected move from spot">◆${emLabel}</span>` : ''}</span><span class="strike-num">${formatStrike(strike)}</span></div></th>`;
       exps.forEach(e => {
         const c = cellData[strike + '|' + e];
         if(!c){
@@ -1756,11 +1767,13 @@
           const bg = gexColor(c.net_gex || 0, maxAbs);
           const isMvcCell = expMeta[e].mvcStrike === strike;
           const isReversalCell = expMeta[e].reversalStrike === strike;
+          const isBump2Cell = expMeta[e].bump2Strike === strike;
           const oiChange = (c.call_oi_change || 0) + (c.put_oi_change || 0);
           const arrow = oiChange > 0 ? '<span class="oi-up">▲</span>' : (oiChange < 0 ? '<span class="oi-down">▼</span>' : '');
-          const cellCls = [isMvcCell ? 'mvc-cell' : '', isReversalCell ? 'reversal-cell' : ''].filter(Boolean).join(' ');
+          const cellCls = [isMvcCell ? 'mvc-cell' : '', isReversalCell ? 'reversal-cell' : '', isBump2Cell ? 'bump2-cell' : ''].filter(Boolean).join(' ');
           const reversalTagHtml = isReversalCell ? '<span class="reversal-cell-tag" title="Reversal — heaviest opposite-sign strike in this expiration">⇄</span>' : '';
-          html += `<td class="${cellCls}" style="background:${bg}" data-strike="${strike}" data-exp="${e}"><div class="cellval">${reversalTagHtml}${fmtMoney(c.net_gex)}${arrow}</div></td>`;
+          const bump2TagHtml = isBump2Cell ? '<span class="bump2-cell-tag" title="Bump2 — runner-up opposite-sign strike in this expiration">‖</span>' : '';
+          html += `<td class="${cellCls}" style="background:${bg}" data-strike="${strike}" data-exp="${e}"><div class="cellval">${reversalTagHtml}${bump2TagHtml}${fmtMoney(c.net_gex)}${arrow}</div></td>`;
         }
       });
       const net = netByStrike[strike] || 0;
