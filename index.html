@@ -258,8 +258,9 @@
   th.strike-cell .nie-tag{ color:var(--rose); font-size:14px; margin-left:3px; }
 
   /* Reversal is now a per-cell marker (different strike per expiration), not a row tag */
-  td.reversal-cell{ outline:2px solid var(--indigo) !important; outline-offset:-2px; }
-  .reversal-cell-tag{ color:var(--indigo); font-size:11px; margin-right:3px; }
+  td.reversal-cell{ background:var(--indigo) !important; }
+  td.reversal-cell .cellval{ color:#fff; font-weight:700; }
+  .reversal-cell-tag{ color:#fff; font-size:11px; margin-right:3px; }
 
   tr.surge-row th.strike-cell{ border-left:3px solid var(--amber); }
   th.strike-cell .surge-tag{ color:var(--amber); font-size:14px; margin-left:3px; }
