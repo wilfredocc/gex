@@ -257,8 +257,9 @@
   tr.nie-row th.strike-cell{ border-left:3px solid var(--rose); }
   th.strike-cell .nie-tag{ color:var(--rose); font-size:14px; margin-left:3px; }
 
-  tr.reversal-row th.strike-cell{ border-left:3px solid var(--indigo); }
-  th.strike-cell .reversal-tag{ color:var(--indigo); font-size:13px; margin-left:3px; }
+  /* Reversal is now a per-cell marker (different strike per expiration), not a row tag */
+  td.reversal-cell{ outline:2px solid var(--indigo) !important; outline-offset:-2px; }
+  .reversal-cell-tag{ color:var(--indigo); font-size:11px; margin-right:3px; }
 
   tr.surge-row th.strike-cell{ border-left:3px solid var(--amber); }
   th.strike-cell .surge-tag{ color:var(--amber); font-size:14px; margin-left:3px; }
@@ -550,7 +551,7 @@
     <span>· <span style="color:var(--purple)">‖</span> Bump = gatekeeper (2nd-strongest node between spot and MVC)</span>
     <span>· <span style="color:var(--rose)">⊙</span> Nie = midpoint between call wall and put wall (no-man's-land)</span>
     <span>· <span style="color:var(--text-faint)">≈</span> Void = air pocket (thin GEX, low resistance)</span>
-    <span>· <span style="color:var(--indigo)">⇄</span> Reversal = heaviest node on the opposite side of spot from MVC</span>
+    <span>· <span style="color:var(--indigo)">⇄</span> Reversal = per-expiration: heaviest opposite-sign strike within that same column vs its own MVC</span>
     <span>· <span style="color:var(--amber)">⚡</span> Hot = 0DTE (or next expiry) strike where live flow-GEX has diverged most from this morning's settled GEX (tap "Load Hot")</span>
     <span>· <span style="color:var(--lime)">⊕</span> Magnet = 0DTE pin target into the close (only in 0DTE mode)</span>
     <span>· <span style="color:var(--skyblue)">◆1x/1.5x/2x</span> = strike nearest that multiple of expected move from spot (tap "Load IV / EM")</span>
@@ -853,7 +854,7 @@
   }
 
   function computeExpiryMeta(d){
-    if(!d || !d.strikes || !d.strikes.length) return {callWall:null, putWall:null, mvcStrike:null, mvcAbs:0, flipStrike:null};
+    if(!d || !d.strikes || !d.strikes.length) return {callWall:null, putWall:null, mvcStrike:null, mvcAbs:0, flipStrike:null, reversalStrike:null};
     let callWall=null, callWallVal=-Infinity, putWall=null, putWallVal=Infinity, mvcStrike=null, mvcAbs=-1;
     d.strikes.forEach(s => {
       const ng = s.net_gex || 0;
@@ -876,7 +877,23 @@
       }
     }
 
-    return {callWall, putWall, mvcStrike, mvcAbs, flipStrike};
+    // Per-expiration Reversal: within THIS SAME column, the heaviest |net GEX| strike whose
+    // sign is opposite the column's own MVC sign — e.g. MVC negative (put-dominant) means
+    // Reversal is the heaviest positive (call-dominant) strike in that same column. This is
+    // now a per-column concept, matching MVC/CW/PW/Flip, not a single row tag for the whole week.
+    let reversalStrike = null;
+    if(mvcStrike != null){
+      const mvcVal = d.strikes.find(s => s.strike === mvcStrike);
+      const mvcSign = mvcVal && (mvcVal.net_gex || 0) < 0 ? -1 : 1;
+      let bestOppAbs = -1;
+      d.strikes.forEach(s => {
+        const ng = s.net_gex || 0;
+        const sign = ng < 0 ? -1 : 1;
+        if(sign !== mvcSign && Math.abs(ng) > bestOppAbs){ bestOppAbs = Math.abs(ng); reversalStrike = s.strike; }
+      });
+    }
+
+    return {callWall, putWall, mvcStrike, mvcAbs, flipStrike, reversalStrike};
   }
 
   // session baseline (first snapshot of the day for this ticker) for build/fade chip
@@ -1648,21 +1665,8 @@
       strikes.forEach(s => { const diff = Math.abs(s - mid); if(diff < best){ best = diff; nieStrike = s; } });
     }
 
-    // Reversal: the heaviest |net GEX| strike on the OPPOSITE side of spot from the MVC.
-    // If MVC is above price, Reversal is the biggest level below it, and vice versa —
-    // together they frame the two largest gravitational pulls on either side of the market.
-    let reversalStrike = null;
-    if(state.spot != null && state.mvcStrike != null && state.mvcStrike !== state.spot){
-      const mvcAboveSpot = state.mvcStrike > state.spot;
-      let bestAbs = -1;
-      strikes.forEach(s => {
-        const onOppositeSide = mvcAboveSpot ? s < state.spot : s > state.spot;
-        if(onOppositeSide){
-          const v = Math.abs(netByStrike[s] || 0);
-          if(v > bestAbs){ bestAbs = v; reversalStrike = s; }
-        }
-      });
-    }
+    // Reversal is now computed per-expiration inside computeExpiryMeta() below, matching
+    // MVC/CW/PW/Flip — see the per-cell rendering in the exps.forEach cell loop.
 
 
     // fast-move zone. Threshold set relative to the same percentile scale used for cell coloring.
@@ -1731,17 +1735,18 @@
       const isPin = strike === pinStrike;
       const isBump = strike === bumpStrike;
       const isNie = strike === nieStrike;
-      const isReversal = strike === reversalStrike;
       const isSurge = state.surgeStrike != null && strike === state.surgeStrike;
       const isMagnet = magnetStrike != null && strike === magnetStrike;
       const isVoid = voidStrikes.has(strike);
       const emLabel = emBandStrikes[strike];
       const isMvcRow = strike === state.mvcStrike;
-      const rowClasses = [isAtm ? 'atm-row' : '', isFlip ? 'flip-row' : '', isPin ? 'pin-row' : '', isBump ? 'bump-row' : '', isNie ? 'nie-row' : '', isReversal ? 'reversal-row' : '', isSurge ? 'surge-row' : '', isMagnet ? 'magnet-row' : '', isVoid ? 'void-row' : '', emLabel ? 'em-row' : ''].filter(Boolean).join(' ');
+      const rowClasses = [isAtm ? 'atm-row' : '', isFlip ? 'flip-row' : '', isPin ? 'pin-row' : '', isBump ? 'bump-row' : '', isNie ? 'nie-row' : '', isSurge ? 'surge-row' : '', isMagnet ? 'magnet-row' : '', isVoid ? 'void-row' : '', emLabel ? 'em-row' : ''].filter(Boolean).join(' ');
       const chg = pctChangeBadge(netByStrike[strike] || 0, strikeBaseline[strike]);
       // vs-open change now lives in the Net GEX by strike column, keeping the strike column
-      // itself down to just the level tags.
-      html += `<tr class="${rowClasses}"><th class="strike-cell"><div class="strike-cell-inner"><span class="strike-tags">${isMvcRow ? '<span class="mvc-star" title="MVC — largest |GEX| strike">★</span>' : ''}${isAtm ? '<span class="spot-tag" title="Spot — current price">◀</span>' : ''}${isPin ? '<span class="pin-tag" title="Pin — pin-risk target strike">◉</span>' : ''}${isBump ? '<span class="bump-tag" title="Bump — gatekeeper node between spot and MVC">‖</span>' : ''}${isNie ? '<span class="nie-tag" title="Nie — midpoint between call wall and put wall">⊙</span>' : ''}${isReversal ? '<span class="reversal-tag" title="Reversal — heaviest node opposite MVC">⇄</span>' : ''}${isSurge ? `<span class="surge-tag" title="Hot — biggest live-vs-settled GEX divergence today, ${state.surgeExp ? escapeHtml(state.surgeExp) : ''}">⚡</span>` : ''}${isMagnet ? '<span class="magnet-tag" title="Magnet — 0DTE pin target into the close">⊕</span>' : ''}${isVoid ? '<span class="void-tag" title="Void — air pocket, thin GEX">≈</span>' : ''}${emLabel ? `<span class="em-tag" title="${emLabel} expected move from spot">◆${emLabel}</span>` : ''}</span><span class="strike-num">${formatStrike(strike)}</span></div></th>`;
+      // itself down to just the level tags. Reversal no longer appears here — it's a
+      // per-expiration cell marker now (see the exps.forEach loop below), since it's a
+      // different strike in every column, not one strike for the whole week.
+      html += `<tr class="${rowClasses}"><th class="strike-cell"><div class="strike-cell-inner"><span class="strike-tags">${isMvcRow ? '<span class="mvc-star" title="MVC — largest |GEX| strike">★</span>' : ''}${isAtm ? '<span class="spot-tag" title="Spot — current price">◀</span>' : ''}${isPin ? '<span class="pin-tag" title="Pin — pin-risk target strike">◉</span>' : ''}${isBump ? '<span class="bump-tag" title="Bump — gatekeeper node between spot and MVC">‖</span>' : ''}${isNie ? '<span class="nie-tag" title="Nie — midpoint between call wall and put wall">⊙</span>' : ''}${isSurge ? `<span class="surge-tag" title="Hot — biggest live-vs-settled GEX divergence today, ${state.surgeExp ? escapeHtml(state.surgeExp) : ''}">⚡</span>` : ''}${isMagnet ? '<span class="magnet-tag" title="Magnet — 0DTE pin target into the close">⊕</span>' : ''}${isVoid ? '<span class="void-tag" title="Void — air pocket, thin GEX">≈</span>' : ''}${emLabel ? `<span class="em-tag" title="${emLabel} expected move from spot">◆${emLabel}</span>` : ''}</span><span class="strike-num">${formatStrike(strike)}</span></div></th>`;
       exps.forEach(e => {
         const c = cellData[strike + '|' + e];
         if(!c){
@@ -1749,9 +1754,12 @@
         } else {
           const bg = gexColor(c.net_gex || 0, maxAbs);
           const isMvcCell = expMeta[e].mvcStrike === strike;
+          const isReversalCell = expMeta[e].reversalStrike === strike;
           const oiChange = (c.call_oi_change || 0) + (c.put_oi_change || 0);
           const arrow = oiChange > 0 ? '<span class="oi-up">▲</span>' : (oiChange < 0 ? '<span class="oi-down">▼</span>' : '');
-          html += `<td class="${isMvcCell ? 'mvc-cell' : ''}" style="background:${bg}" data-strike="${strike}" data-exp="${e}"><div class="cellval">${fmtMoney(c.net_gex)}${arrow}</div></td>`;
+          const cellCls = [isMvcCell ? 'mvc-cell' : '', isReversalCell ? 'reversal-cell' : ''].filter(Boolean).join(' ');
+          const reversalTagHtml = isReversalCell ? '<span class="reversal-cell-tag" title="Reversal — heaviest opposite-sign strike in this expiration">⇄</span>' : '';
+          html += `<td class="${cellCls}" style="background:${bg}" data-strike="${strike}" data-exp="${e}"><div class="cellval">${reversalTagHtml}${fmtMoney(c.net_gex)}${arrow}</div></td>`;
         }
       });
       const net = netByStrike[strike] || 0;
