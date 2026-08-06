@@ -1,0 +1,2291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GEX Matrix — FlashAlpha</title>
+<style>
+  :root{
+    --bg:#0a0d12;
+    --panel:#0f141b;
+    --panel2:#131a23;
+    --border:#1e2733;
+    --border-soft:#171f29;
+    --text:#e6edf3;
+    --text-dim:#7c8a9a;
+    --text-faint:#4a5563;
+    --blue:#3aa0ff;
+    --blue-deep:#1c5fa8;
+    --orange:#ff8a3d;
+    --orange-deep:#b8541a;
+    --gold:#f2c14e;
+    --cyan:#33d9c4;
+    --purple:#b98af0;
+    --rose:#ff6fae;
+    --indigo:#6c7aff;
+    --magenta:#e05fd1;
+    --amber:#ffb347;
+    --lime:#baff5f;
+    --skyblue:#7dd3fc;
+    --green:#35d488;
+    --red:#ff5470;
+    --mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; background:var(--bg); color:var(--text);
+    font-family:var(--sans); height:100%; overflow:hidden;
+  }
+
+  /* ---------- App shell (mobile default: single column, unchanged behavior) ---------- */
+  .app-shell{ display:flex; flex-direction:column; height:100vh; }
+  .app-rail{ display:none; } /* desktop-only watchlist rail, see media query below */
+  .app-main{ display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
+
+  /* ---------- Header ---------- */
+  header{
+    background:var(--panel);
+    border-bottom:1px solid var(--border);
+    padding:10px 14px;
+    display:flex; flex-direction:column; gap:8px;
+    flex-shrink:0;
+  }
+  .brand-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+  .brand{ display:flex; align-items:center; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; -ms-overflow-style:none; }
+  .brand::-webkit-scrollbar{ display:none; height:0; }
+  .brand > *{ flex-shrink:0; }
+  .brand .mark{ font-family:var(--mono); font-weight:700; letter-spacing:0.5px; color:var(--blue); font-size:15px; }
+  .brand .sub{ font-size:11px; color:var(--text-faint); font-family:var(--mono); }
+  .brand .mini-clock{ font-size:9px; color:var(--text-faint); font-family:var(--mono); }
+  button.mini{ padding:2px 6px; font-size:9px; }
+
+  .ticker-form{ display:flex; align-items:center; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; -ms-overflow-style:none; }
+  .ticker-form::-webkit-scrollbar{ display:none; height:0; }
+  .ticker-form > *{ flex-shrink:0; }
+  .ticker-form input[type=text]{
+    background:var(--bg); border:1px solid var(--border); color:var(--text);
+    font-family:var(--mono); font-size:15px; font-weight:600; letter-spacing:1px;
+    padding:7px 10px; border-radius:6px; width:100px; text-transform:uppercase;
+  }
+  .ticker-form input[type=text]:focus{ outline:none; border-color:var(--blue); }
+  button{
+    background:var(--panel2); border:1px solid var(--border); color:var(--text);
+    font-family:var(--sans); font-size:12px; padding:7px 12px; border-radius:6px;
+    cursor:pointer; transition:border-color .15s, background .15s;
+  }
+  button:hover{ border-color:var(--blue); }
+  button.primary{ background:var(--blue-deep); border-color:var(--blue); color:#fff; font-weight:600; }
+  button.primary:hover{ background:var(--blue); }
+  button.toggle{ padding:6px 10px; font-size:11px; }
+  button.toggle.active{ background:var(--blue-deep); border-color:var(--blue); color:#fff; }
+  button:disabled{ opacity:0.4; cursor:not-allowed; }
+  button.small{ padding:3px 7px; font-size:10px; }
+
+  .status-dot{ width:7px; height:7px; border-radius:50%; background:var(--text-faint); flex-shrink:0; }
+  .status-dot.live{ background:var(--green); box-shadow:0 0 6px var(--green); animation:pulse 2s infinite; }
+  .status-dot.err{ background:var(--red); box-shadow:0 0 6px var(--red); }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+  .controls-row{ display:flex; align-items:center; gap:10px; flex-wrap:nowrap; overflow-x:auto; font-size:10px; color:var(--text-dim); scrollbar-width:none; -ms-overflow-style:none; }
+  .controls-row::-webkit-scrollbar{ display:none; height:0; }
+
+  button#favBtn{ font-size:15px; padding:5px 9px; color:var(--text-dim); }
+  button#favBtn.active{ color:var(--gold); border-color:var(--gold); }
+
+  .watchlist-row{
+    display:none; align-items:center; gap:6px; overflow-x:auto; white-space:nowrap;
+    padding:0 14px 8px; scrollbar-width:none; -ms-overflow-style:none;
+  }
+  .watchlist-row::-webkit-scrollbar{ display:none; height:0; }
+  .wl-chip{
+    flex-shrink:0; background:var(--panel2); border:1px solid var(--border); color:var(--text-dim);
+    font-family:var(--mono); font-size:11px; padding:4px 10px; border-radius:12px; cursor:pointer;
+  }
+  .wl-chip.active{ background:var(--blue-deep); border-color:var(--blue); color:#fff; }
+
+  .grew-row{
+    display:none; font-size:10px; color:var(--text-dim); font-family:var(--mono);
+    padding:5px 14px; border-bottom:1px solid var(--border-soft); background:var(--panel);
+    overflow-x:auto; white-space:nowrap; scrollbar-width:none; -ms-overflow-style:none;
+  }
+  .grew-row::-webkit-scrollbar{ display:none; height:0; }
+  .grew-row .grew-label{ color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; margin-right:6px; }
+  .grew-row .grew-strike{ color:var(--text); font-weight:600; }
+  .grew-row .grew-up{ color:var(--blue); }
+  .grew-row .grew-down{ color:var(--orange); }
+
+  .narrative-panel{
+    font-size:12px; line-height:1.5; color:var(--text); font-family:var(--sans);
+    padding:10px 34px 10px 14px; border-bottom:1px solid var(--border-soft); background:var(--panel);
+    position:relative;
+  }
+  .narrative-panel strong{ font-weight:700; }
+  .narrative-close{
+    position:absolute; top:8px; right:8px; background:var(--panel2); border:1px solid var(--border);
+    color:var(--text-dim); font-size:12px; width:22px; height:22px; border-radius:6px;
+    line-height:1; cursor:pointer; padding:0;
+  }
+  .narr-grid{ display:grid; grid-template-columns:1fr; gap:6px; }
+  .narr-item{ background:var(--panel2); border:1px solid var(--border-soft); border-radius:7px; padding:6px 9px; }
+  .narr-label{ font-family:var(--mono); font-size:9.5px; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:2px; }
+  .narr-text{ color:var(--text-dim); font-size:12px; line-height:1.4; }
+  .narr-freeform{ line-height:1.6; }
+  .narrative-panel .narr-regime{ color:var(--blue); }
+  .narrative-panel .narr-gex_change{ color:var(--skyblue); }
+  .narrative-panel .narr-key_levels{ color:var(--gold); }
+  .narrative-panel .narr-flow{ color:var(--amber); }
+  .narrative-panel .narr-vanna{ color:var(--orange); }
+  .narrative-panel .narr-charm{ color:var(--rose); }
+  .narrative-panel .narr-zero_dte{ color:var(--lime); }
+  .narrative-panel .narr-outlook{ color:var(--purple); }
+  .narrative-panel .narr-default{ color:var(--cyan); }
+
+  /* ---------- Macro context panel ---------- */
+  .macro-panel{
+    display:none; padding:10px 34px 10px 14px; border-bottom:1px solid var(--border-soft);
+    background:var(--panel); position:relative;
+  }
+  .macro-grid{ display:flex; flex-wrap:wrap; gap:8px; }
+  .macro-item{
+    background:var(--panel2); border:1px solid var(--border); border-radius:8px;
+    padding:5px 10px; display:flex; align-items:baseline; gap:6px;
+  }
+  .macro-item .lbl{ font-size:9px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; font-family:var(--mono); }
+  .macro-item .v{ font-family:var(--mono); font-size:12.5px; font-weight:600; color:var(--skyblue); }
+
+  /* ---------- Zero-data diagnostic banner ---------- */
+  .zero-data-notice{
+    display:none; align-items:center; justify-content:space-between; gap:10px;
+    background:rgba(255,138,61,0.12); border-bottom:1px solid var(--orange-deep);
+    color:var(--text); font-size:11.5px; font-family:var(--sans); line-height:1.5;
+    padding:9px 14px; flex-shrink:0;
+  }
+  .zero-data-notice button{
+    background:transparent; border:1px solid var(--border); color:var(--text-dim);
+    font-size:11px; width:22px; height:22px; padding:0; border-radius:6px; flex-shrink:0; cursor:pointer;
+  }
+  .dealer-risk-banner{
+    display:none; align-items:center; gap:10px; flex-wrap:wrap;
+    background:rgba(58,160,255,0.10); border-bottom:1px solid var(--blue);
+    color:var(--text); font-size:11.5px; font-family:var(--sans); line-height:1.5;
+    padding:8px 14px; flex-shrink:0;
+  }
+  .dealer-risk-banner .lbl{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.4px; }
+  .dealer-risk-banner .direction-pill{
+    font-family:var(--mono); font-weight:700; font-size:10.5px; padding:2px 8px; border-radius:8px;
+  }
+  .control-group{ display:flex; align-items:center; gap:4px; flex-shrink:0; }
+  .control-label{ font-family:var(--mono); font-size:9px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.4px; margin-right:1px; }
+  .stepper{ display:flex; align-items:center; gap:3px; }
+  .stepper button{ padding:2px 6px; font-size:11px; line-height:1; }
+  .stepper .val{ font-family:var(--mono); font-size:11px; min-width:18px; text-align:center; color:var(--text); }
+  .controls-row button.toggle.small{ padding:3px 7px; font-size:10px; }
+
+  .budget-readout{ display:none; }
+
+  /* ---------- Metrics bar (compact pill strip, single row) ---------- */
+  .metrics-bar{
+    display:flex; flex-wrap:nowrap; gap:6px; overflow-x:auto; white-space:nowrap;
+    padding:6px 14px; border-bottom:1px solid var(--border);
+    background:var(--bg); flex-shrink:0; scrollbar-width:none; -ms-overflow-style:none;
+  }
+  .metrics-bar::-webkit-scrollbar{ display:none; height:0; }
+  .metric{
+    background:var(--panel2); border:1px solid var(--border); border-radius:14px;
+    padding:4px 10px; flex-shrink:0; display:flex; align-items:baseline; gap:5px;
+  }
+  .metric .lbl{ font-size:8px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.4px; font-family:var(--mono); }
+  .metric .v{ font-family:var(--mono); font-size:11.5px; font-weight:600; }
+  .metric .v.pos{ color:var(--blue); }
+  .metric .v.neg{ color:var(--orange); }
+  .metric .v.gold{ color:var(--gold); }
+  .metric .sub{ font-size:8px; color:var(--text-dim); font-family:var(--mono); }
+
+  /* ---------- Grid ---------- */
+  .grid-wrap{ flex:1; overflow:auto; position:relative; background:var(--bg); }
+  table.gex-grid{ border-collapse:separate; border-spacing:0; font-family:var(--mono); font-size:10.5px; min-width:100%; }
+  table.gex-grid thead th{
+    position:sticky; top:0; z-index:3; background:var(--panel);
+    border-bottom:1px solid var(--border); border-right:1px solid var(--border-soft);
+    padding:5px 7px; text-align:center; font-weight:600; white-space:nowrap;
+  }
+  table.gex-grid thead th.strike-head{ position:sticky; top:0; z-index:4; background:var(--panel); min-width:72px; padding:5px 4px; }
+  .strike-head-label{ font-size:10.5px; margin-bottom:2px; }
+  .strike-range-picker{ display:flex; gap:2px; justify-content:center; }
+  .srp-btn{
+    background:var(--bg); border:1px solid var(--border); color:var(--text-dim);
+    font-family:var(--mono); font-size:8px; padding:2px 4px; border-radius:4px; cursor:pointer;
+  }
+  .srp-btn.active{ background:var(--blue-deep); border-color:var(--blue); color:#fff; }
+  table.gex-grid thead th .exp-date{ font-size:10.5px; color:var(--text); }
+  table.gex-grid thead th .exp-mvc{ font-size:8px; color:var(--gold); font-weight:400; margin-top:1px; }
+  table.gex-grid thead th .opex-badge{
+    display:inline-block; font-size:7px; font-weight:700; letter-spacing:0.4px;
+    color:#3a2f0a; background:var(--gold); border-radius:3px; padding:1px 4px; margin-top:2px;
+  }
+
+  table.gex-grid tbody td{
+    padding:0; text-align:center; border-right:1px solid var(--border-soft);
+    border-bottom:1px solid var(--border-soft); min-width:64px; height:27px;
+    cursor:pointer; position:relative; transition:outline-color .1s;
+  }
+  table.gex-grid tbody td:hover{ outline:1.5px solid var(--text); outline-offset:-1.5px; }
+  table.gex-grid tbody td .cellval{ font-size:10.5px; }
+  .diff-val{ font-weight:700; }
+  td.diff-stale-cell{ opacity:0.4; }
+  table.gex-grid tbody td.empty{ color:var(--text-faint); cursor:default; }
+  table.gex-grid tbody td.empty:hover{ outline:none; }
+
+  table.gex-grid tbody th.strike-cell{
+    position:relative; z-index:2; background:var(--panel2);
+    border-right:1px solid var(--border); font-weight:600; padding:0 5px;
+    white-space:nowrap; font-size:13px;
+  }
+  .strike-cell-inner{ display:flex; align-items:center; justify-content:space-between; gap:3px; width:100%; }
+  table.gex-grid tbody tr:nth-child(even) th.strike-cell{ background:#161c25; }
+  .strike-tags{ display:flex; align-items:center; gap:2px; overflow:hidden; }
+  .strike-num{ white-space:nowrap; }
+  tr.atm-row td{ background:rgba(242,193,78,0.06); }
+  table.gex-grid tbody tr.atm-row th.strike-cell{ background:#f0f0f0; color:#111; }
+  table.gex-grid tbody tr.atm-row th.strike-cell .spot-tag{ color:#666; }
+  tr.flip-row th.strike-cell{ box-shadow: inset 0 1.5px 0 var(--green), inset 0 -1.5px 0 var(--green); }
+  tr.flip-row td{ box-shadow: inset 0 1.5px 0 rgba(53,212,136,0.55), inset 0 -1.5px 0 rgba(53,212,136,0.55); }
+
+  tr.pin-row th.strike-cell{ border-left:3px solid var(--cyan); }
+  tr.pin-row td:first-of-type{ }
+  th.strike-cell .pin-tag{ color:var(--cyan); font-size:14px; margin-left:3px; }
+
+  tr.bump1-row th.strike-cell{ border-left:3px solid var(--purple); }
+  th.strike-cell .bump1-tag{ color:var(--purple); font-size:14px; margin-left:3px; }
+
+  /* Bump2 is a per-cell marker (runner-up opposite-sign strike per expiration) — distinct
+     magenta color from Bump1's purple so the two never get confused for one another */
+  td.bump2-cell{ outline:2px solid var(--magenta) !important; outline-offset:-2px; }
+  .bump2-cell-tag{ color:var(--magenta); font-size:11px; margin-right:3px; }
+
+  tr.nie-row th.strike-cell{ border-left:3px solid var(--rose); }
+  th.strike-cell .nie-tag{ color:var(--rose); font-size:14px; margin-left:3px; }
+
+  /* Reversal is now a per-cell marker (different strike per expiration), not a row tag */
+  td.reversal-cell{ background:var(--indigo) !important; }
+  td.reversal-cell .cellval{ color:#fff; font-weight:700; }
+  .reversal-cell-tag{ color:#fff; font-size:11px; margin-right:3px; }
+
+  tr.surge-row th.strike-cell{ border-left:3px solid var(--amber); }
+  th.strike-cell .surge-tag{ color:var(--amber); font-size:14px; margin-left:3px; }
+
+  tr.magnet-row th.strike-cell{ border-left:3px solid var(--lime); }
+  th.strike-cell .magnet-tag{ color:var(--lime); font-size:14px; margin-left:3px; }
+  th.strike-cell .em-tag{ color:var(--skyblue); font-size:10px; margin-left:3px; }
+
+  .chg-up{ color:#0a0d12; background:var(--blue); font-size:9.5px; font-weight:700; margin-left:2px; padding:1px 6px; border-radius:8px; white-space:nowrap; }
+  .chg-down{ color:#0a0d12; background:var(--orange); font-size:9.5px; font-weight:700; margin-left:2px; padding:1px 6px; border-radius:8px; white-space:nowrap; }
+  .chg-flat{ color:var(--text-faint); background:var(--panel2); border:1px solid var(--border); font-size:9.5px; margin-left:2px; padding:1px 6px; border-radius:8px; white-space:nowrap; }
+
+  tr.void-row td{
+    background-image: repeating-linear-gradient(135deg, rgba(255,255,255,0.035) 0 5px, transparent 5px 10px) !important;
+  }
+  tr.void-row th.strike-cell{ color:var(--text-faint); }
+  th.strike-cell .void-tag{ color:var(--text-faint); font-size:13px; margin-left:3px; }
+
+  th.strike-cell .spot-tag{ color:var(--gold); font-size:15px; margin-left:3px; }
+  th.strike-cell .mvc-star{ color:var(--gold); margin-right:2px; }
+  td.mvc-cell{ outline:3px solid var(--gold) !important; outline-offset:-3px; }
+  td.mvc-cell .cellval::after{ content:' ★'; color:var(--gold); font-size:8px; }
+  .oi-up{ color:var(--green); font-size:8px; margin-left:3px; }
+  .oi-down{ color:var(--red); font-size:8px; margin-left:3px; }
+  table.gex-grid thead th .exp-walls{ font-size:9px; margin-top:1px; }
+  table.gex-grid thead th .exp-walls .cw{ color:var(--blue); }
+  table.gex-grid thead th .exp-walls .pw{ color:var(--orange); }
+  table.gex-grid thead th .exp-flip{ font-size:9px; margin-top:1px; color:var(--green); }
+  .metric .sub.chip{ font-weight:600; }
+
+  .netcol-head{ min-width:128px !important; }
+  td.net-cell{ min-width:128px; text-align:left; padding:0 8px !important; cursor:default; }
+  tr:nth-child(even) td.net-cell{ background:#0d1117; }
+  td.net-cell:hover{ outline:none; }
+  .net-bar-wrap{ display:flex; align-items:center; gap:5px; height:100%; }
+  .net-bar-track{ flex:1; height:9px; background:var(--border-soft); border-radius:2px; position:relative; overflow:hidden; }
+  .net-bar-track::after{ content:''; position:absolute; left:50%; top:0; bottom:0; width:1px; background:var(--text-faint); opacity:0.6; z-index:1; }
+  .net-bar-fill{ position:absolute; top:0; bottom:0; }
+  .net-val{ font-size:10.5px; min-width:48px; text-align:right; }
+
+  /* ---------- Tooltip / detail panel ---------- */
+  .detail-panel{
+    position:fixed; bottom:0; left:0; right:0; background:var(--panel);
+    border-top:1px solid var(--border); padding:14px 18px; z-index:10;
+    transform:translateY(100%); transition:transform .18s ease-out;
+    max-height:46vh; overflow-y:auto;
+  }
+  .detail-panel.open{ transform:translateY(0); }
+  .detail-panel .dp-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .detail-panel .dp-title{ font-family:var(--mono); font-size:14px; font-weight:700; }
+  .detail-panel .dp-close{ cursor:pointer; color:var(--text-dim); font-size:18px; line-height:1; padding:2px 8px; }
+  .dp-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(120px,1fr)); gap:10px; }
+  .dp-item .lbl{ font-size:9px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; font-family:var(--mono); }
+  .dp-item .v{ font-family:var(--mono); font-size:14px; margin-top:2px; }
+
+  /* ---------- Custom expiry picker ---------- */
+  .picker-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:20;
+    display:none; align-items:flex-start; justify-content:center; padding-top:8vh;
+  }
+  .picker-overlay.open{ display:flex; }
+  .picker-box{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    padding:16px; width:340px; max-height:70vh; overflow-y:auto;
+  }
+  .picker-box h3{ margin:0 0 10px 0; font-size:13px; font-family:var(--mono); }
+  .picker-list label{
+    display:flex; align-items:center; gap:8px; padding:6px 4px; font-family:var(--mono);
+    font-size:12px; border-bottom:1px solid var(--border-soft); cursor:pointer;
+  }
+  .picker-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+
+  .empty-state{ padding:60px 20px; text-align:center; color:var(--text-dim); font-family:var(--mono); font-size:13px; }
+  .empty-state .big{ font-size:15px; color:var(--text); margin-bottom:8px; }
+
+  .legend-details{ border-top:1px solid var(--border-soft); background:var(--panel); flex-shrink:0; max-height:30vh; overflow-y:auto; }
+  .legend-details summary{
+    cursor:pointer; padding:6px 14px; font-size:10px; color:var(--text-dim);
+    font-family:var(--mono); list-style:none; user-select:none;
+  }
+  .legend-details summary::-webkit-details-marker{ display:none; }
+  .legend-details summary::before{ content:'▸ '; color:var(--text-faint); }
+  .legend-details[open] summary::before{ content:'▾ '; }
+  .legend{ display:flex; align-items:center; gap:10px; font-size:10px; color:var(--text-faint); font-family:var(--mono); padding:2px 14px 8px; flex-wrap:wrap;}
+  .legend-swatch{ width:26px; height:10px; border-radius:2px; display:inline-block; vertical-align:middle; margin-right:4px; }
+
+  ::-webkit-scrollbar{ width:10px; height:10px; }
+  ::-webkit-scrollbar-track{ background:var(--bg); }
+  ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:5px; }
+  ::-webkit-scrollbar-thumb:hover{ background:var(--text-faint); }
+
+  /* ---------- Desktop terminal layout ---------- */
+  @media (min-width: 900px){
+    .app-shell{ flex-direction:row; }
+    .app-main{ flex:1; min-width:0; }
+
+    .app-rail{
+      display:flex; flex-direction:column; width:190px; flex-shrink:0;
+      background:var(--panel); border-right:1px solid var(--border);
+      padding:14px 10px; gap:6px; overflow-y:auto;
+    }
+    .rail-title{
+      font-family:var(--mono); font-size:10px; color:var(--text-faint);
+      text-transform:uppercase; letter-spacing:0.6px; padding:0 4px;
+    }
+    .rail-title-row{ display:flex; align-items:center; justify-content:space-between; padding:0 4px; }
+    .rail-title-row .rail-title{ padding:0; }
+    .rail-refresh-btn{
+      background:transparent; border:1px solid var(--border); color:var(--text-faint);
+      font-size:11px; width:18px; height:18px; padding:0; border-radius:5px; cursor:pointer; line-height:1;
+    }
+    .rail-refresh-btn:hover{ color:var(--text); border-color:var(--text-dim); }
+    .rail-list{ display:flex; flex-direction:column; gap:5px; }
+    .rail-chip{
+      background:var(--panel2); border:1px solid var(--border); color:var(--text-dim);
+      font-family:var(--mono); font-size:12px; padding:7px 10px; border-radius:6px;
+      cursor:pointer; text-align:left; width:100%;
+    }
+    .rail-chip.active{ background:var(--blue-deep); border-color:var(--blue); color:#fff; }
+    .rail-chip-sub{ display:flex; justify-content:space-between; font-size:9.5px; margin-top:2px; opacity:0.85; }
+    .rail-empty{ font-family:var(--mono); font-size:10px; color:var(--text-faint); padding:2px 4px; line-height:1.4; }
+
+    .rail-symbol{ display:flex; flex-direction:column; gap:6px; margin-bottom:2px; }
+    .rail-symbol input{
+      width:100%; background:var(--panel2); border:1px solid var(--border); color:var(--text);
+      font-family:var(--mono); font-size:15px; font-weight:700; text-transform:uppercase;
+      padding:7px 9px; border-radius:6px; letter-spacing:0.5px;
+    }
+    .rail-symbol input:focus{ outline:none; border-color:var(--blue); }
+    .rail-symbol-btns{ display:flex; gap:6px; }
+    .rail-symbol-btns button{ flex:1; }
+
+    .rail-macro-grid{ display:flex; flex-direction:column; gap:3px; padding:0 2px; }
+    .rail-macro-item{
+      display:flex; justify-content:space-between; align-items:baseline;
+      font-family:var(--mono); font-size:11.5px; padding:3px 4px;
+      border-bottom:1px solid var(--border-soft);
+    }
+    .rail-macro-item .lbl{ color:var(--text-faint); font-size:10px; }
+    .rail-macro-item .v{ color:var(--skyblue); font-weight:600; }
+
+    /* pushed to the bottom of the rail so the sidebar never reads as dead empty space */
+    .rail-footer{
+      margin-top:auto; font-family:var(--mono); font-size:10px; color:var(--text-faint);
+      padding:8px 4px 2px; border-top:1px solid var(--border-soft);
+    }
+
+    /* the mobile horizontal chip strip is replaced by the rail on desktop */
+    .watchlist-row{ display:none !important; }
+    /* macro data now lives in the rail on desktop — the horizontal bar would be redundant */
+    .macro-panel{ display:none !important; }
+
+    .narr-grid{ grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:8px; }
+
+    table.gex-grid thead th{ padding:7px 9px; }
+    table.gex-grid thead th .exp-date{ font-size:12.5px; }
+    table.gex-grid thead th .exp-mvc{ font-size:11px; }
+    table.gex-grid thead th .exp-walls{ font-size:11px; }
+    table.gex-grid thead th .exp-flip{ font-size:11px; }
+
+    /* symbol entry now lives in the rail — hide the header's copy, freeing up header space */
+    #tickerForm #tickerInput, #tickerForm #favBtn, #tickerForm #loadBtn{ display:none; }
+
+    .metric-hero{
+      background:var(--panel2); border:1px solid var(--border); border-radius:8px;
+      padding:5px 14px;
+    }
+    .metric-hero .lbl{ font-size:10px; }
+    .metric-hero .v{ font-size:19px; }
+    .metric-hero .sub{ font-size:11px; }
+
+    .controls-row{ flex-wrap:wrap; overflow-x:visible; }
+    table.gex-grid{ font-size:11.5px; }
+
+    /* detail panel becomes a right-anchored slide-in instead of a bottom sheet */
+    .detail-panel{
+      left:auto; right:0; top:0; bottom:0; width:360px; max-height:none;
+      border-top:none; border-left:1px solid var(--border);
+      transform:translateX(100%); transition:transform .18s ease-out;
+    }
+    .detail-panel.open{ transform:translateX(0); }
+  }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+  <div class="app-rail" id="appRail">
+    <div class="rail-title">Symbol</div>
+    <div class="rail-symbol">
+      <input type="text" id="railTickerInput" maxlength="6" autocomplete="off" spellcheck="false" placeholder="SPY">
+      <div class="rail-symbol-btns">
+        <button type="button" class="small" id="railFavBtn" title="Add to watchlist">☆</button>
+        <button type="button" class="primary small" id="railLoadBtn">Load</button>
+      </div>
+    </div>
+
+    <div class="rail-title-row" style="margin-top:8px;">
+      <div class="rail-title">Watchlist</div>
+      <button type="button" class="rail-refresh-btn" id="railSummaryRefreshBtn" title="Load live summary for each watchlist symbol">↻</button>
+    </div>
+    <div class="rail-list" id="railList"></div>
+
+    <div class="rail-title" style="margin-top:14px;">Macro</div>
+    <div class="rail-macro-grid" id="macroRailGrid"><div class="rail-empty">Tap "Load Macro" above.</div></div>
+
+    <div class="rail-title" style="margin-top:14px;">Live Levels</div>
+    <div class="rail-macro-grid" id="liveLevelsRailGrid"><div class="rail-empty">Tap "Load Live Levels" above.</div></div>
+
+    <div class="rail-footer" id="railFooter"></div>
+  </div>
+  <div class="app-main">
+
+<header>
+  <div class="brand-row">
+    <div class="brand">
+      <span class="mark">Γ MATRIX</span>
+      <span class="status-dot" id="statusDot"></span>
+      <span class="mini-clock" id="lastUpdated">—</span>
+      <button type="button" class="small mini" id="apiKeyBtn">API Key</button>
+      <div class="metric"><div class="lbl">Net GEX</div><div class="v" id="mNetGex">—</div><div class="sub" id="mNetGexChip"></div></div>
+      <div class="metric"><div class="lbl">Building</div><div class="v pos" id="mBuildStrike">—</div></div>
+      <div class="metric"><div class="lbl">Fading</div><div class="v neg" id="mFadeStrike">—</div></div>
+    </div>
+    <form class="ticker-form" id="tickerForm">
+      <input type="text" id="tickerInput" value="SPY" maxlength="6" autocomplete="off" spellcheck="false">
+      <button type="button" class="small" id="favBtn" title="Add to watchlist">☆</button>
+      <button type="submit" class="primary" id="loadBtn">Load</button>
+      <div class="metric metric-hero" id="spotCard"><div class="lbl">Spot</div><div class="v" id="mSpot">—</div></div>
+      <div class="metric metric-hero" id="mvcDayCard"><div class="lbl">MVC · Day</div><div class="v gold" id="mMvcDay">—</div><div class="sub" id="mMvcDaySub"></div></div>
+      <div class="metric metric-hero" id="mvcWeekCard"><div class="lbl">MVC · Week</div><div class="v gold" id="mMvcWeek">—</div><div class="sub" id="mMvcWeekSub"></div></div>
+      <div class="metric"><div class="lbl">Regime</div><div class="v" id="mRegime">—</div></div>
+    </form>
+  </div>
+
+  <div class="watchlist-row" id="watchlistRow"></div>
+
+  <div class="controls-row">
+    <div class="control-group">
+      <button class="toggle small" id="weekBtn">Week</button>
+      <button class="toggle small" id="mode0dte">0DTE</button>
+      <button class="small" id="pickExpBtn">Manual</button>
+    </div>
+
+    <div class="control-group">
+      <button class="toggle small" id="pollToggleBtn" data-secs="0">Poll: Off</button>
+    </div>
+
+    <div class="control-group">
+      <button class="small" id="loadIvBtn">Load IV / EM</button>
+      <button class="small" id="loadSurgeBtn">Load Hot</button>
+      <button class="toggle small" id="liveDiffBtn">Diff: Off</button>
+      <button class="small" id="loadNarrativeBtn">Load Narrative</button>
+      <button class="small" id="loadMacroBtn">Load Macro</button>
+      <button class="small" id="loadLiveLevelsBtn">Load Live Levels</button>
+    </div>
+
+    <div class="budget-readout" id="budgetReadout">req today: 0/2400</div>
+  </div>
+</header>
+
+<div class="metrics-bar" id="metricsBar">
+  <div class="metric"><div class="lbl">Pin Score</div><div class="v" id="mPin">—</div><div class="sub" id="mPinSub"></div></div>
+  <div class="metric"><div class="lbl">ATM IV</div><div class="v" id="mIv">—</div></div>
+  <div class="metric"><div class="lbl">Exp. Move (1x)</div><div class="v" id="mEm">—</div></div>
+  <div id="zeroDtePills" style="display:contents;">
+    <div class="metric zdte-only" style="display:none;"><div class="lbl">0DTE Pin</div><div class="v" id="mZdtePin">—</div><div class="sub" id="mZdteMagnet"></div></div>
+    <div class="metric zdte-only" style="display:none;"><div class="lbl">Remaining Move</div><div class="v" id="mZdteMove">—</div></div>
+    <div class="metric zdte-only" style="display:none;"><div class="lbl">Time to Close</div><div class="v" id="mZdteClose">—</div></div>
+    <div class="metric zdte-only" style="display:none;"><div class="lbl">Theta/hr</div><div class="v neg" id="mZdteTheta">—</div></div>
+    <div class="metric zdte-only" style="display:none;"><div class="lbl">Gamma Accel</div><div class="v" id="mZdteAccel">—</div></div>
+  </div>
+</div>
+
+<div class="grew-row" id="grewRow"></div>
+
+<div class="macro-panel" id="macroPanel" style="display:none;">
+  <button class="narrative-close" id="macroCloseBtn" title="Hide macro">✕</button>
+  <div class="macro-grid" id="macroGrid"></div>
+</div>
+
+<div class="narrative-panel" id="narrativePanel" style="display:none;">
+  <button class="narrative-close" id="narrativeCloseBtn" title="Hide narrative">✕</button>
+  <div id="narrativeContent"></div>
+</div>
+
+<div class="zero-data-notice" id="zeroDataNotice" style="display:none;"></div>
+
+<div class="dealer-risk-banner" id="dealerRiskBanner" style="display:none;"></div>
+
+<div class="grid-wrap" id="gridWrap">
+  <div class="empty-state">
+    <div class="big">No data loaded yet</div>
+    Enter a ticker and hit Load. First time here? Tap "API Key" to save your FlashAlpha X-Api-Key — it's stored only in this browser.
+  </div>
+</div>
+
+<details class="legend-details">
+  <summary>Legend</summary>
+  <div class="legend">
+    <span><span class="legend-swatch" style="background:linear-gradient(90deg, rgba(255,138,61,0.85), rgba(255,138,61,0.08))"></span>put-dominant (negative GEX)</span>
+    <span><span class="legend-swatch" style="background:linear-gradient(90deg, rgba(58,160,255,0.08), rgba(58,160,255,0.85))"></span>call-dominant (positive GEX)</span>
+    <span>· <span style="color:var(--green)">green</span> row = gamma flip · gold strike = ATM</span>
+    <span>· <span style="color:var(--gold)">★</span> = MVC (largest |GEX| strike) · per-column ★ = that expiry's own MVC</span>
+    <span>· <span style="color:var(--green)">▲</span>/<span style="color:var(--red)">▼</span> = OI growing/shrinking that cell</span>
+    <span>· <span style="color:var(--cyan)">◉</span> Pin = pin-risk target strike</span>
+    <span>· <span style="color:var(--purple)">‖</span> Bump1 = gatekeeper (2nd-strongest node between spot and MVC, whole week)</span>
+    <span>· <span style="color:var(--magenta)">‖</span> Bump2 = heaviest GEX strike between spot and MVC, today's expiration only</span>
+    <span>· <span style="color:var(--rose)">⊙</span> Nie = midpoint between call wall and put wall (no-man's-land)</span>
+    <span>· <span style="color:var(--text-faint)">≈</span> Void = air pocket (thin GEX, low resistance)</span>
+    <span>· <span style="color:var(--indigo)">⇄</span> Reversal = per-expiration: heaviest opposite-sign strike within that same column vs its own MVC</span>
+    <span>· <span style="color:var(--amber)">⚡</span> Hot = 0DTE (or next expiry) strike where live flow-GEX has diverged most from this morning's settled GEX (tap "Load Hot")</span>
+    <span>· "Diff: On" recolors the whole grid by live-vs-settled GEX divergence per cell (Δ value shown) instead of raw GEX — dimmed cells have no diff data loaded for that column yet</span>
+    <span>· Dealer Risk banner (appears when Diff is on) = FlashAlpha's own settled-vs-live GEX/DEX delta + direction verdict for the whole symbol</span>
+    <span>· "Load Live Levels" = live-recalculated Flip/Call Wall/Put Wall/Max Pain on effective OI, shown in the rail with a vs-settled % badge</span>
+    <span>· Rail watchlist ↻ = live direction + % shift per pinned symbol, one tap to refresh all</span>
+    <span>· <span style="color:var(--lime)">⊕</span> Magnet = 0DTE pin target into the close (only in 0DTE mode)</span>
+    <span>· <span style="color:var(--skyblue)">◆1x/1.5x/2x</span> = strike nearest that multiple of expected move from spot (tap "Load IV / EM")</span>
+    <span>· gold OPEX badge = monthly options expiration (3rd Friday)</span>
+    <span>· <span style="color:var(--blue)">▲</span>/<span style="color:var(--orange)">▼</span>% next to a tag = that level's |GEX| change vs first snapshot today · <span style="color:var(--text-faint)">ø</span> = flat (under 3%)</span>
+    <span>· tap any cell for detail</span>
+  </div>
+</details>
+
+  </div>
+</div>
+
+<div class="detail-panel" id="detailPanel">
+  <div class="dp-head">
+    <div class="dp-title" id="dpTitle">—</div>
+    <div class="dp-close" id="dpClose">✕</div>
+  </div>
+  <div class="dp-grid" id="dpGrid"></div>
+</div>
+
+<div class="picker-overlay" id="pickerOverlay">
+  <div class="picker-box">
+    <h3>Select expirations (max 16)</h3>
+    <div class="picker-list" id="pickerList"></div>
+    <div class="picker-actions">
+      <button class="small" id="pickerCancel">Cancel</button>
+      <button class="small primary" id="pickerApply">Apply</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  const BASE = 'https://lab.flashalpha.com';
+  let DAILY_CAP = 2400; // fallback estimate until /v1/account confirms the real plan limit
+  const MIN_SNAP_INTERVAL_MS = 15000;
+  const REQ_TIMEOUT_MS = 12000;
+
+  const LS_APIKEY = 'fa_gexmatrix_apikey';
+  const LS_PREFS  = 'fa_gexmatrix_prefs';
+  const LS_WATCHLIST = 'fa_gexmatrix_watchlist';
+
+  function todayKey(){
+    const d = new Date();
+    return 'fa_gexmatrix_reqcount_' + d.toISOString().slice(0,10);
+  }
+
+  const state = {
+    apiKey: localStorage.getItem(LS_APIKEY) || '',
+    ticker: 'SPY',
+    allExpirations: [],
+    selectedExpirations: [],
+    manualPick: null,
+    weekMode: true,
+    mode0dte: false,
+    strikeRange: 20,
+    pollSecs: 0,
+    pollTimer: null,
+    busy: false,
+    gexByExp: {},
+    liveDiffOn: false,
+    liveDiffByExp: {},
+    dealerRisk: null,
+    liveLevels: null,
+    watchlistSummaries: {},
+    levels: null,
+    pinRisk: null,
+    pinRiskError: null,
+    zeroDte: null,
+    volatility: null,
+    spot: null,
+    lastSnap: null,
+    requestCount: parseInt(localStorage.getItem(todayKey()) || '0', 10),
+    dailyCapConfirmed: false,
+    ivLoaded: false,
+    surgeStrike: null,
+    surgeExp: null,
+    surgeDelta: null,
+    surgeLoaded: false,
+    stickyLeftEls: [],
+  };
+
+  loadPrefs();
+
+  function loadPrefs(){
+    try{
+      const p = JSON.parse(localStorage.getItem(LS_PREFS) || '{}');
+      if(p.ticker) state.ticker = p.ticker;
+      if(p.strikeRange) state.strikeRange = p.strikeRange;
+    }catch(e){}
+  }
+  function savePrefs(){
+    localStorage.setItem(LS_PREFS, JSON.stringify({
+      ticker: state.ticker, strikeRange: state.strikeRange
+    }));
+  }
+
+  function loadWatchlist(){
+    try{ return JSON.parse(localStorage.getItem(LS_WATCHLIST)) || []; }catch(e){ return []; }
+  }
+  function saveWatchlist(list){
+    localStorage.setItem(LS_WATCHLIST, JSON.stringify(list));
+  }
+  function updateFavBtn(){
+    const list = loadWatchlist();
+    const isFav = list.includes(state.ticker);
+    ['favBtn', 'railFavBtn'].forEach(id => {
+      const btn = document.getElementById(id);
+      if(!btn) return;
+      btn.textContent = isFav ? '★' : '☆';
+      btn.classList.toggle('active', isFav);
+    });
+    tickerInput.value = state.ticker;
+    const railInput = document.getElementById('railTickerInput');
+    if(railInput) railInput.value = state.ticker;
+  }
+  function selectTicker(t){
+    tickerInput.value = t;
+    state.ticker = t;
+    state.allExpirations = [];
+    state.manualPick = null;
+    savePrefs();
+    updateFavBtn();
+    renderWatchlist();
+    runSnap(false);
+  }
+
+  function renderWatchlist(){
+    const list = loadWatchlist();
+    const row = $('watchlistRow');
+    if(!list.length){
+      row.style.display = 'none';
+      row.innerHTML = '';
+    } else {
+      row.style.display = 'flex';
+      row.innerHTML = list.map(t =>
+        `<button class="wl-chip${t === state.ticker ? ' active' : ''}" data-ticker="${t}">${t}</button>`
+      ).join('');
+      row.querySelectorAll('.wl-chip').forEach(btn => {
+        btn.addEventListener('click', () => selectTicker(btn.dataset.ticker));
+      });
+    }
+
+    // Desktop rail — same list, vertical layout, independent of the mobile chip strip above.
+    const rail = $('railList');
+    if(!list.length){
+      rail.innerHTML = '<div class="rail-empty">No favorites yet — tap ☆ next to a ticker to pin it here.</div>';
+    } else {
+      rail.innerHTML = list.map(t => {
+        const s = state.watchlistSummaries[t];
+        const subHtml = s
+          ? `<div class="rail-chip-sub"><span style="color:${s.color}">${escapeHtml(s.label)}</span><span>${s.pctText}</span></div>`
+          : '';
+        return `<button class="rail-chip${t === state.ticker ? ' active' : ''}" data-ticker="${t}"><div>${t}</div>${subHtml}</button>`;
+      }).join('');
+      rail.querySelectorAll('.rail-chip').forEach(btn => {
+        btn.addEventListener('click', () => selectTicker(btn.dataset.ticker));
+      });
+    }
+  }
+
+  async function loadWatchlistSummaries(){
+    const list = loadWatchlist();
+    if(!list.length) return;
+    const btn = $('railSummaryRefreshBtn');
+    const origText = btn.textContent;
+    btn.textContent = '…';
+    btn.disabled = true;
+    try{
+      const results = await Promise.all(list.map(t =>
+        fa('/v1/flow/summary/' + encodeURIComponent(t))
+          .then(r => ({ticker: t, data: r}))
+          .catch(err => ({ticker: t, error: err.message}))
+      ));
+      let anySuccess = false;
+      results.forEach(r => {
+        if(!r.data) return;
+        // Field names not confirmed for this endpoint — try the documented shape
+        // (direction, intraday OI delta, live GEX, % shift) plus common variants.
+        const label = r.data.flow_direction ?? r.data.direction ?? r.data.label ?? r.data.regime;
+        const pctShift = toNum(r.data.pct_shift ?? r.data.shift_pct ?? r.data.oi_delta_pct ?? r.data.intraday_oi_delta_pct);
+        if(!label && pctShift == null) return;
+        anySuccess = true;
+        const labelColors = { amplifying: 'var(--orange)', regime_flip: 'var(--red)', dampening: 'var(--blue)', neutral: 'var(--text-faint)', no_flow: 'var(--text-faint)' };
+        const color = labelColors[String(label).toLowerCase()] || 'var(--skyblue)';
+        state.watchlistSummaries[r.ticker] = {
+          label: label ? String(label).replace(/_/g,' ') : '—',
+          pctText: pctShift != null ? (pctShift > 0 ? '+' : '') + pctShift.toFixed(1) + '%' : '',
+          color,
+        };
+      });
+      if(!anySuccess){
+        const sample = results.find(r => r.data);
+        const sampleKeys = sample ? Object.keys(sample.data).join(', ') : '(all requests failed)';
+        throw new Error('No recognizable fields (flow_direction/pct_shift) in any response. Sample keys: ' + sampleKeys);
+      }
+      renderWatchlist();
+      btn.textContent = origText;
+    }catch(err){
+      alert('Watchlist summary load failed: ' + err.message);
+      btn.textContent = origText;
+    }finally{
+      btn.disabled = false;
+    }
+  }
+
+  const $ = (id) => document.getElementById(id);
+  const tickerInput = $('tickerInput');
+  const railTickerInput = $('railTickerInput');
+  const tickerForm = $('tickerForm');
+  const statusDot = $('statusDot');
+  const lastUpdatedEl = $('lastUpdated');
+  const budgetReadout = $('budgetReadout');
+  const gridWrap = $('gridWrap');
+  const detailPanel = $('detailPanel');
+  const dpTitle = $('dpTitle');
+  const dpGrid = $('dpGrid');
+  const pickerOverlay = $('pickerOverlay');
+  const pickerList = $('pickerList');
+
+  tickerInput.value = state.ticker;
+  if(railTickerInput) railTickerInput.value = state.ticker;
+
+  function incRequests(n){
+    state.requestCount += n;
+    localStorage.setItem(todayKey(), String(state.requestCount));
+    renderBudget();
+  }
+  function renderBudget(){
+    const remaining = DAILY_CAP - state.requestCount;
+    let cls = '';
+    if(remaining < 200) cls = 'crit'; else if(remaining < 600) cls = 'warn';
+    const capLabel = (state.dailyCapConfirmed ? DAILY_CAP : ('~' + DAILY_CAP));
+    budgetReadout.innerHTML = `req today: <span class="${cls}">${state.requestCount}/${capLabel}</span> · ~${estimateSnapCost()}/snap`;
+    const rf = document.getElementById('railFooter');
+    if(rf) rf.innerHTML = `<span class="${cls}">${state.requestCount}/${capLabel}</span> req today<br>~${estimateSnapCost()} per snap`;
+  }
+  function estimateSnapCost(){
+    const n = state.manualPick ? state.manualPick.length : (state.selectedExpirations.length || 5);
+    return Math.max(n, 1) + 2 + (state.mode0dte ? 1 : 0); // + levels call + pin-risk call + zero-dte call
+  }
+
+  async function fa(path){
+    if(!state.apiKey){
+      throw new Error('No API key set. Click "API Key" to add your FlashAlpha X-Api-Key.');
+    }
+    if(state.requestCount >= DAILY_CAP){
+      throw new Error('Daily request cap reached (' + DAILY_CAP + '). Resets at midnight local time.');
+    }
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
+    try{
+      const res = await fetch(BASE + path, {
+        headers: { 'X-Api-Key': state.apiKey },
+        signal: ctrl.signal
+      });
+      incRequests(1);
+      if(!res.ok){
+        if(res.status === 403){
+          throw new Error('403 tier_restricted — this endpoint needs a higher FlashAlpha plan.');
+        }
+        if(res.status === 429){
+          throw new Error('429 rate limited — back off and retry.');
+        }
+        throw new Error(res.status + ' ' + res.statusText + ' on ' + path);
+      }
+      return await res.json();
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  async function loadAccountQuota(){
+    if(!state.apiKey) return;
+    try{
+      const acct = await fa('/v1/account');
+      // Field name isn't confirmed yet — try the documented name plus common variants
+      // before giving up and keeping the guessed default.
+      const guess = acct.daily_limit ?? acct.dailyLimit ?? acct.requests_per_day
+        ?? acct.daily_cap ?? acct.rate_limit_daily
+        ?? (acct.limits && (acct.limits.daily ?? acct.limits.daily_limit));
+      if(typeof guess === 'number' && guess > 0){
+        DAILY_CAP = guess;
+        state.dailyCapConfirmed = true;
+        renderBudget();
+      } else {
+        console.warn('[GEX] /v1/account had no recognizable daily-limit field. Top-level keys:', Object.keys(acct).join(', '));
+      }
+    }catch(err){
+      console.warn('[GEX] /v1/account fetch failed, keeping estimated cap:', err.message);
+    }
+  }
+
+  function normalizeChain(json){
+    let exps = json.expirations || [];
+    if(exps.length && typeof exps[0] === 'object'){
+      return exps.map(e => e.expiration).sort();
+    }
+    return [...exps].sort();
+  }
+
+  function todayET(){
+    return new Date().toISOString().slice(0,10);
+  }
+
+  function formatExpHeader(dateStr){
+    const d = new Date(dateStr + 'T00:00:00');
+    const wd = d.toLocaleDateString('en-US', { weekday: 'short' });
+    const md = String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0');
+    return wd + ' · ' + md;
+  }
+
+  function currentWeekBounds(){
+    const now = new Date();
+    const day = now.getDay(); // 0=Sun..6=Sat
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMonday);
+    const friday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 4);
+    const fmt = d => d.toISOString().slice(0,10);
+    return { monday: fmt(monday), friday: fmt(friday) };
+  }
+
+  function pickExpirations(){
+    const all = state.allExpirations;
+    if(state.manualPick && state.manualPick.length){
+      return state.manualPick.filter(e => all.includes(e));
+    }
+    if(state.mode0dte){
+      const t = todayET();
+      const exact = all.filter(e => e === t);
+      if(exact.length) return exact;
+      return all.slice(0,1);
+    }
+    const { monday, friday } = currentWeekBounds();
+    const inWeek = all.filter(e => e >= monday && e <= friday);
+    return inWeek.length ? inWeek : all.slice(0, 5);
+  }
+
+  function dteFor(expiration){
+    const ms = new Date(expiration + 'T16:00:00Z') - new Date();
+    return Math.max(ms / 86400000, 0);
+  }
+
+  // per-expiration call wall / put wall / MVC (highest |net GEX| strike), computed
+  // over that expiry's FULL strike list (not just the visible/centered window)
+  // OPEX: the 3rd Friday of the month is the standard monthly options expiration.
+  function isOpexFriday(dateStr){
+    const d = new Date(dateStr + 'T12:00:00Z');
+    if(d.getUTCDay() !== 5) return false;
+    const day = d.getUTCDate();
+    return day >= 15 && day <= 21;
+  }
+
+  function computeExpiryMeta(d){
+    if(!d || !d.strikes || !d.strikes.length) return {callWall:null, putWall:null, mvcStrike:null, mvcAbs:0, flipStrike:null, reversalStrike:null};
+    let callWall=null, callWallVal=-Infinity, putWall=null, putWallVal=Infinity, mvcStrike=null, mvcAbs=-1;
+    d.strikes.forEach(s => {
+      const ng = s.net_gex || 0;
+      if(ng > callWallVal){ callWallVal = ng; callWall = s.strike; }
+      if(ng < putWallVal){ putWallVal = ng; putWall = s.strike; }
+      if(Math.abs(ng) > mvcAbs){ mvcAbs = Math.abs(ng); mvcStrike = s.strike; }
+    });
+
+    // Per-expiration gamma flip: nearest strike where net GEX crosses zero as strikes ascend.
+    // This is a local zero-crossing computed from this column's own data — distinct from the
+    // single ticker-wide flip value the API returns via /v1/exposure/levels.
+    let flipStrike = null;
+    const sorted = d.strikes.slice().sort((a, b) => a.strike - b.strike);
+    for(let i = 1; i < sorted.length; i++){
+      const prev = sorted[i-1].net_gex || 0;
+      const cur = sorted[i].net_gex || 0;
+      if(prev !== 0 && cur !== 0 && ((prev < 0 && cur > 0) || (prev > 0 && cur < 0))){
+        flipStrike = Math.abs(prev) < Math.abs(cur) ? sorted[i-1].strike : sorted[i].strike;
+        break;
+      }
+    }
+
+    // Per-expiration Reversal: within THIS SAME column, the heaviest |net GEX| strike whose
+    // sign is opposite the column's own MVC sign — mathematically the same strike as
+    // whichever wall (CW/PW) sits opposite MVC's sign, since "heaviest of a given sign" is
+    // exactly how CW/PW are defined too.
+    let reversalStrike = null;
+    if(mvcStrike != null){
+      const mvcVal = d.strikes.find(s => s.strike === mvcStrike);
+      const mvcSign = mvcVal && (mvcVal.net_gex || 0) < 0 ? -1 : 1;
+      const oppositeSorted = d.strikes
+        .filter(s => { const ng = s.net_gex || 0; const sign = ng < 0 ? -1 : 1; return sign !== mvcSign; })
+        .sort((a, b) => Math.abs(b.net_gex || 0) - Math.abs(a.net_gex || 0));
+      reversalStrike = oppositeSorted.length > 0 ? oppositeSorted[0].strike : null;
+    }
+
+    return {callWall, putWall, mvcStrike, mvcAbs, flipStrike, reversalStrike};
+  }
+
+  // session baseline (first snapshot of the day for this ticker) for build/fade chip
+  function baselineKey(){
+    const d = new Date().toISOString().slice(0,10);
+    return 'fa_gexmatrix_baseline_' + state.ticker + '_' + d;
+  }
+  function getOrSetBaseline(totalNet){
+    const key = baselineKey();
+    let baseline = null;
+    try{ baseline = JSON.parse(localStorage.getItem(key)); }catch(e){}
+    if(!baseline){
+      baseline = { totalNet: totalNet, ts: Date.now() };
+      localStorage.setItem(key, JSON.stringify(baseline));
+    }
+    return baseline;
+  }
+
+  // per-strike session baseline (first snapshot of the day), used to show how much
+  // conviction at a notable level (MVC/Bump/Nie/Reversal/Pin) has grown or faded since open
+  function strikeBaselineKey(){
+    const d = new Date().toISOString().slice(0,10);
+    return 'fa_gexmatrix_strikebaseline_' + state.ticker + '_' + d;
+  }
+  function getOrSetStrikeBaseline(netByStrike){
+    const key = strikeBaselineKey();
+    let baseline = null;
+    try{ baseline = JSON.parse(localStorage.getItem(key)); }catch(e){}
+    if(!baseline){
+      baseline = {};
+      Object.entries(netByStrike).forEach(([k,v]) => { baseline[k] = v; });
+      localStorage.setItem(key, JSON.stringify(baseline));
+    }
+    return baseline;
+  }
+  function pctChangeBadge(currentVal, baselineVal){
+    if(baselineVal == null || Math.abs(baselineVal) < 1e5) return '';
+    const pct = ((Math.abs(currentVal) - Math.abs(baselineVal)) / Math.abs(baselineVal)) * 100;
+    if(Math.abs(pct) < 3) return '<span class="chg-flat" title="Flat — under 3% change vs open">ø</span>';
+    if(pct > 0) return `<span class="chg-up">▲${pct.toFixed(0)}%</span>`;
+    return `<span class="chg-down">▼${Math.abs(pct).toFixed(0)}%</span>`;
+  }
+
+  function hideZeroDataNotice(){
+    const el = $('zeroDataNotice');
+    if(el) el.style.display = 'none';
+  }
+
+  function checkAllZeroGex(byExp){
+    const notice = $('zeroDataNotice');
+    if(!notice) return;
+    const allStrikes = Object.values(byExp).flatMap(d => (d && d.strikes) || []);
+    if(!allStrikes.length){
+      notice.style.display = 'none';
+      return;
+    }
+    const allZero = allStrikes.every(s => !s.net_gex);
+    if(!allZero){
+      notice.style.display = 'none';
+      return;
+    }
+    const sampleKeys = Object.keys(allStrikes[0]).join(', ');
+    const isWeekend = [0, 6].includes(new Date().getDay());
+    notice.innerHTML =
+      `<span>Every strike came back with $0 GEX across ${Object.keys(byExp).length} expiration(s).` +
+      (isWeekend
+        ? ` It's the weekend — this is most likely stale/no-data from a closed market, not a bug. Re-check during trading hours.`
+        : ` Markets should be open — this looks like a field-name mismatch. Sample strike keys: ${escapeHtml(sampleKeys)}.`) +
+      `</span><button id="zeroDataDismiss" title="Dismiss">✕</button>`;
+    notice.style.display = 'flex';
+    $('zeroDataDismiss').addEventListener('click', hideZeroDataNotice);
+  }
+
+  async function runSnap(isPoll){
+    if(state.busy) return;
+    if(!state.ticker) return;
+    if(state.lastSnap && (Date.now() - state.lastSnap) < MIN_SNAP_INTERVAL_MS){
+      return;
+    }
+    state.busy = true;
+    setStatus('loading');
+    try{
+      if(!state.allExpirations.length || !isPoll){
+        const chainJson = await fa('/v1/options/' + encodeURIComponent(state.ticker));
+        state.allExpirations = normalizeChain(chainJson);
+      }
+      const exps = pickExpirations();
+      state.selectedExpirations = exps;
+      if(!exps.length){
+        throw new Error('No expirations available for ' + state.ticker);
+      }
+
+      const results = await Promise.all(exps.map(e =>
+        fa('/v1/exposure/gex/' + encodeURIComponent(state.ticker) + '?expiration=' + e)
+          .then(r => ({exp:e, data:r}))
+          .catch(err => ({exp:e, error: err.message}))
+      ));
+
+      const byExp = {};
+      let spot = null;
+      results.forEach(r => {
+        if(r.data){
+          byExp[r.exp] = r.data;
+          if(spot == null) spot = r.data.underlying_price;
+        }
+      });
+      state.gexByExp = byExp;
+      state.spot = spot;
+
+      // Diagnostic: if every strike across every loaded expiration is exactly 0,
+      // that's either a no-fresh-data day (weekend/holiday) or a field-name mismatch —
+      // surface which, instead of silently rendering a grid full of $0.
+      checkAllZeroGex(byExp);
+
+      try{
+        const lvl = await fa('/v1/exposure/levels/' + encodeURIComponent(state.ticker));
+        state.levels = lvl.levels || lvl;
+      }catch(e){ state.levels = null; }
+
+      try{
+        const pr = await fa('/v1/flow/pin-risk/' + encodeURIComponent(state.ticker));
+        state.pinRisk = pr.pin_risk || pr;
+        state.pinRiskError = null;
+      }catch(e){ state.pinRisk = null; state.pinRiskError = e.message; }
+
+      if(state.mode0dte){
+        try{
+          const zd = await fa('/v1/exposure/zero-dte/' + encodeURIComponent(state.ticker));
+          state.zeroDte = zd.no_zero_dte ? null : zd;
+        }catch(e){ state.zeroDte = null; }
+      } else {
+        state.zeroDte = null;
+      }
+
+      state.lastSnap = Date.now();
+      lastUpdatedEl.textContent = new Date().toLocaleTimeString();
+      setStatus('live');
+      render();
+    }catch(err){
+      console.error(err);
+      setStatus('err');
+      showError(err.message);
+    }finally{
+      state.busy = false;
+    }
+  }
+
+  async function loadIv(){
+    if(!state.ticker) return;
+    const btn = $('loadIvBtn');
+    const origText = btn.textContent;
+    btn.textContent = 'Loading…';
+    btn.disabled = true;
+    try{
+      const vol = await fa('/v1/volatility/' + encodeURIComponent(state.ticker));
+      state.volatility = vol;
+      state.ivLoaded = true;
+      render();
+      // ATM IV / Exp Move pills are the last two in the metrics strip — scroll them into view
+      const mIvEl = $('mIv');
+      if(mIvEl) mIvEl.closest('.metric').scrollIntoView({behavior:'smooth', inline:'end', block:'nearest'});
+    }catch(err){
+      alert('IV load failed: ' + err.message);
+    }finally{
+      btn.textContent = state.ivLoaded ? 'Reload IV / EM' : origText;
+      btn.disabled = false;
+    }
+  }
+
+  async function loadSurge(){
+    if(!state.ticker){
+      alert('Enter a ticker first, then Hot.');
+      return;
+    }
+    const btn = $('loadSurgeBtn');
+    const origText = btn.textContent;
+    btn.textContent = 'Loading…';
+    btn.disabled = true;
+    try{
+      // Hot is scoped to 0DTE (or the next closest expiration if today has none) — not
+      // aggregated across the whole loaded week. It finds where LIVE flow-adjusted GEX has
+      // diverged most from this morning's SETTLED GEX at the same expiration: that divergence
+      // is actual flow concentration today, not just a second copy of "biggest static GEX
+      // weight" (which is what MVC already measures).
+      if(!state.allExpirations.length){
+        const chain = await fa('/v1/options/expirations/' + encodeURIComponent(state.ticker));
+        state.allExpirations = normalizeChain(chain);
+      }
+      const todayStr = todayET();
+      const nearestExp = state.allExpirations.includes(todayStr) ? todayStr : state.allExpirations[0];
+      if(!nearestExp){
+        throw new Error('No expirations found for ' + state.ticker + '.');
+      }
+
+      const [liveRes, settledRes] = await Promise.all([
+        fa('/v1/flow/gex/' + encodeURIComponent(state.ticker) + '?expiration=' + nearestExp),
+        fa('/v1/exposure/gex/' + encodeURIComponent(state.ticker) + '?expiration=' + nearestExp),
+      ]);
+
+      const liveStrikes = liveRes.strikes || [];
+      const settledStrikes = settledRes.strikes || [];
+      if(!liveStrikes.length || !settledStrikes.length){
+        throw new Error('Missing strikes[] in the live or settled response for ' + nearestExp + '.');
+      }
+
+      const settledByStrike = {};
+      settledStrikes.forEach(s => { settledByStrike[s.strike] = s.net_gex || 0; });
+
+      let surgeStrike = null, bestDelta = -1, bestDeltaVal = 0;
+      liveStrikes.forEach(s => {
+        const liveVal = s.net_gex || 0;
+        const settledVal = settledByStrike[s.strike] || 0;
+        const delta = Math.abs(liveVal - settledVal);
+        if(delta > bestDelta){ bestDelta = delta; surgeStrike = s.strike; bestDeltaVal = liveVal - settledVal; }
+      });
+
+      // Diagnostic: if every live value exactly equals its settled counterpart (delta all 0),
+      // that's either a very quiet flow day or — much more likely — net_gex isn't the right
+      // field name on one of these two responses and we're comparing 0 to 0.
+      if(bestDelta === 0){
+        throw new Error('Live and settled GEX matched at every strike (delta = 0) for ' + nearestExp + ' — likely a field-name mismatch rather than a quiet day. Sample live strike keys: ' + Object.keys(liveStrikes[0]).join(', '));
+      }
+
+      state.surgeStrike = surgeStrike;
+      state.surgeExp = nearestExp;
+      state.surgeDelta = bestDeltaVal;
+      state.surgeLoaded = true;
+      render();
+    }catch(err){
+      alert('Hot load failed: ' + err.message);
+    }finally{
+      btn.textContent = state.surgeLoaded ? 'Reload Hot' : origText;
+      btn.disabled = false;
+    }
+  }
+
+  async function toggleLiveDiff(){
+    const btn = $('liveDiffBtn');
+    if(state.liveDiffOn){
+      // Turning off costs nothing — just stop showing the overlay, keep the fetched data
+      // cached in case it's turned back on for the same columns.
+      state.liveDiffOn = false;
+      btn.textContent = 'Diff: Off';
+      btn.classList.remove('active');
+      $('dealerRiskBanner').style.display = 'none';
+      render();
+      return;
+    }
+    if(!state.ticker || !state.selectedExpirations.length){
+      alert('Load the grid first, then Live Diff.');
+      return;
+    }
+    const origText = btn.textContent;
+    btn.textContent = 'Loading…';
+    btn.disabled = true;
+    try{
+      // One live flow-GEX call per currently visible column, diffed against the settled
+      // snapshot already sitting in state.gexByExp from the normal grid load — no need to
+      // re-fetch settled data. This paints the WHOLE grid by live-vs-settled divergence,
+      // the same comparison Hot already does for a single strike, just for every cell.
+      const results = await Promise.all(state.selectedExpirations.map(e =>
+        fa('/v1/flow/gex/' + encodeURIComponent(state.ticker) + '?expiration=' + e)
+          .then(r => ({exp: e, data: r}))
+          .catch(err => ({exp: e, error: err.message}))
+      ));
+
+      const anySuccess = results.some(r => r.data);
+      if(!anySuccess){
+        const firstErr = results.find(r => r.error);
+        throw new Error('All requests failed. ' + (firstErr ? firstErr.error : ''));
+      }
+
+      const liveDiffByExp = {};
+      let anyNonZero = false;
+      results.forEach(r => {
+        if(!r.data || !r.data.strikes) return;
+        const settled = state.gexByExp[r.exp];
+        const settledByStrike = {};
+        if(settled && settled.strikes){
+          settled.strikes.forEach(s => { settledByStrike[s.strike] = s.net_gex || 0; });
+        }
+        const byStrike = {};
+        r.data.strikes.forEach(s => {
+          const liveVal = s.net_gex || 0;
+          const settledVal = settledByStrike[s.strike] || 0;
+          const delta = liveVal - settledVal;
+          if(delta !== 0) anyNonZero = true;
+          byStrike[s.strike] = delta;
+        });
+        liveDiffByExp[r.exp] = byStrike;
+      });
+
+      // Diagnostic: if every diff came back as exactly 0 across every column, that's much
+      // more likely a field-name mismatch (comparing 0 to 0 on both sides) than a genuinely
+      // flat market across the whole visible week.
+      if(!anyNonZero){
+        const sample = results.find(r => r.data && r.data.strikes && r.data.strikes.length);
+        const sampleKeys = sample ? Object.keys(sample.data.strikes[0]).join(', ') : '(no sample available)';
+        throw new Error('Every live-vs-settled delta came back as 0 across all visible columns — likely a field-name mismatch rather than a flat market. Sample live strike keys: ' + sampleKeys);
+      }
+
+      state.liveDiffByExp = liveDiffByExp;
+      state.liveDiffOn = true;
+      btn.textContent = 'Diff: On';
+      btn.classList.add('active');
+
+      // Dealer-Risk: FlashAlpha's own settled-vs-live GEX/DEX delta + direction label for
+      // the whole symbol — an authoritative second opinion alongside the per-cell diff above,
+      // not a replacement for it (this endpoint doesn't appear to expose a per-strike
+      // breakdown, just the aggregate verdict). Best-effort: Diff mode still works without it.
+      try{
+        const dr = await fa('/v1/flow/dealer-risk/' + encodeURIComponent(state.ticker));
+        const gexDelta = dr.gex_delta ?? dr.net_gex_delta ?? dr.dealer_gex_delta ?? (dr.gex && dr.gex.delta);
+        const dexDelta = dr.dex_delta ?? dr.net_dex_delta ?? dr.dealer_dex_delta ?? (dr.dex && dr.dex.delta);
+        const label = dr.flow_direction ?? dr.label ?? dr.direction ?? dr.regime;
+        if(gexDelta == null && dexDelta == null && !label){
+          console.warn('[GEX] dealer-risk response had no recognized fields. Top-level keys:', Object.keys(dr).join(', '));
+          state.dealerRisk = null;
+          $('dealerRiskBanner').style.display = 'none';
+        } else {
+          state.dealerRisk = { gexDelta: gexDelta != null ? Number(gexDelta) : null, dexDelta: dexDelta != null ? Number(dexDelta) : null, label: label || null };
+          // flow_direction enum per FlashAlpha docs: no_flow, neutral, amplifying, dampening, regime_flip
+          const labelColors = { amplifying: 'var(--orange)', regime_flip: 'var(--red)', dampening: 'var(--blue)', neutral: 'var(--text-faint)', no_flow: 'var(--text-faint)' };
+          const pillColor = labelColors[String(label).toLowerCase()] || 'var(--skyblue)';
+          const parts = [];
+          if(label) parts.push(`<span class="direction-pill" style="background:${pillColor};color:#0a0d12">${escapeHtml(String(label).replace(/_/g,' '))}</span>`);
+          if(gexDelta != null) parts.push(`<span><span class="lbl">GEX Δ</span> ${fmtMoney(Number(gexDelta))}</span>`);
+          if(dexDelta != null) parts.push(`<span><span class="lbl">DEX Δ</span> ${fmtMoney(Number(dexDelta))}</span>`);
+          $('dealerRiskBanner').innerHTML = `<span class="lbl">Dealer Risk (settled → live)</span>` + parts.join('');
+          $('dealerRiskBanner').style.display = 'flex';
+        }
+      }catch(err){
+        console.warn('[GEX] dealer-risk fetch failed (non-critical):', err.message);
+        state.dealerRisk = null;
+        $('dealerRiskBanner').style.display = 'none';
+      }
+
+      render();
+    }catch(err){
+      alert('Live Diff failed: ' + err.message);
+      btn.textContent = origText;
+    }finally{
+      btn.disabled = false;
+    }
+  }
+
+  // Confirmed from FlashAlpha's documented field taxonomy: the macro object's fields are
+  // flat — vix, vvix, skew, spx, move, vix_3m, vix_term_slope — not nested under a
+  // vix_term_structure.levels object like earlier guesses assumed. That mismatch is why
+  // VVIX/SKEW/MOVE/SPX/Term never populated before.
+  const MACRO_FIELD_ALIASES = {
+    vix:   ['vix','VIX'],
+    vvix:  ['vvix','VVIX'],
+    skew:  ['skew','SKEW','skew_index'],
+    move:  ['move','MOVE','move_index'],
+    spx:   ['spx','SPX','spx_price'],
+    vix3m: ['vix_3m','vix3m'],
+    slope: ['vix_term_slope','term_slope'],
+  };
+  function pickField(obj, names){
+    if(!obj) return undefined;
+    for(const n of names){
+      if(obj[n] !== undefined && obj[n] !== null) return obj[n];
+    }
+    return undefined;
+  }
+  // Only ever returns a real number or null — never lets a bad field render as "NaN".
+  function toNum(v){
+    if(typeof v === 'number' && !Number.isNaN(v)) return v;
+    if(typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) return Number(v);
+    return null;
+  }
+
+  async function loadMacro(){
+    if(!state.ticker) return;
+    const btn = $('loadMacroBtn');
+    const origText = btn.textContent;
+    btn.textContent = 'Loading…';
+    btn.disabled = true;
+    try{
+      const res = await fa('/v1/stock/' + encodeURIComponent(state.ticker) + '/summary');
+      const container = res.macro || res.macro_context || res.market || res.market_context || res.context || res;
+
+      const vix   = toNum(pickField(container, MACRO_FIELD_ALIASES.vix));
+      const vvix  = toNum(pickField(container, MACRO_FIELD_ALIASES.vvix));
+      const skew  = toNum(pickField(container, MACRO_FIELD_ALIASES.skew));
+      const move  = toNum(pickField(container, MACRO_FIELD_ALIASES.move));
+      const spx   = toNum(pickField(container, MACRO_FIELD_ALIASES.spx));
+      let vix3m = toNum(pickField(container, MACRO_FIELD_ALIASES.vix3m));
+      const slope = toNum(pickField(container, MACRO_FIELD_ALIASES.slope));
+
+      // vix_3m isn't its own top-level field — the confirmed container key is
+      // vix_term_structure (nested object), so pull vix3m/slope from there if present.
+      const termObj = container.vix_term_structure;
+      const vix3mNested = toNum(termObj && (termObj.vix_3m ?? termObj.vix3m ?? (termObj.levels && termObj.levels.vix3m)));
+      if(vix3m == null && vix3mNested != null) vix3m = vix3mNested;
+
+      // Term structure derived from vix vs vix_3m (or the slope field directly, if present)
+      // rather than a separate structure/label field — the docs don't list one.
+      let termLabel = '—';
+      let slopeVal = slope;
+      if(slopeVal == null && vix != null && vix3m != null && vix !== 0){
+        slopeVal = ((vix3m - vix) / vix) * 100;
+      }
+      if(slopeVal != null){
+        const structure = slopeVal > 0 ? 'Contango' : slopeVal < 0 ? 'Backwardation' : 'Flat';
+        const slopePct = Math.abs(slopeVal) <= 3 ? slopeVal * 100 : slopeVal; // fraction vs already-percent
+        termLabel = structure + ' (' + (slopePct > 0 ? '+' : '') + slopePct.toFixed(1) + '%)';
+      }
+
+      const recognizedKeys = ['vix','vvix','skew','move','spx','vix_term_structure'];
+      const keysPresent = recognizedKeys.filter(k => k in container);
+      const found = [vix, vvix, skew, move, spx, vix3m].some(v => v !== null);
+      if(!found){
+        if(keysPresent.length){
+          // The field NAMES are right (confirmed present) but every value is null right
+          // now — almost certainly a closed-market gap rather than a mapping bug.
+          const isWeekend = [0, 6].includes(new Date().getDay());
+          throw new Error('Macro fields (' + keysPresent.join(', ') + ') are present but all null right now' +
+            (isWeekend ? ' — markets are closed (weekend), so FlashAlpha likely has no fresh macro snapshot yet.' : '. Try again during trading hours, or this may be a temporary gap on FlashAlpha\'s side.'));
+        }
+        const topKeys = Object.keys(res).join(', ');
+        const macroKeys = (container !== res) ? Object.keys(container).join(', ') : '(no separate macro/market container found)';
+        throw new Error('No recognizable macro fields (vix/vvix/skew/move/spx). Top-level keys: ' + topKeys + '. Macro container keys: ' + macroKeys);
+      }
+
+      const items = [
+        ['VIX',  vix  != null ? vix.toFixed(2)  : '—'],
+        ['VVIX', vvix != null ? vvix.toFixed(2) : '—'],
+        ['SKEW', skew != null ? skew.toFixed(1) : '—'],
+        ['MOVE', move != null ? move.toFixed(2) : '—'],
+        ['SPX',  spx  != null ? spx.toLocaleString() : '—'],
+        ['Term', termLabel],
+      ];
+
+      // Bonus fields — same response, no extra API cost. Field names here are best-effort
+      // guesses (never confirmed live), so only surfaced when actually present, and logged
+      // to console if the whole block is a miss so the real names are one look away.
+      const fmtVolPct = v => (Math.abs(v) <= 3 ? v * 100 : v).toFixed(1) + '%';
+
+      const volObj = res.volatility;
+      if(volObj && typeof volObj === 'object'){
+        const atmIv = toNum(volObj.atm_iv ?? volObj.atmIv ?? volObj.iv);
+        const hv    = toNum(volObj.hv ?? volObj.historical_vol ?? volObj.realized_vol);
+        const vrp   = toNum(volObj.vrp ?? volObj.vol_risk_premium);
+        const skew25= toNum(volObj.skew_25d ?? volObj.skew25 ?? volObj.delta25_skew ?? volObj.risk_reversal_25d);
+        if(atmIv != null) items.push(['ATM IV', fmtVolPct(atmIv)]);
+        if(hv    != null) items.push(['HV', fmtVolPct(hv)]);
+        if(vrp   != null) items.push(['VRP', fmtVolPct(vrp)]);
+        if(skew25!= null) items.push(['25Δ Skew', skew25.toFixed(2)]);
+        if(atmIv==null && hv==null && vrp==null && skew25==null){
+          console.warn('[GEX] summary.volatility had no recognized fields. Keys:', Object.keys(volObj).join(', '));
+        }
+      }
+
+      const flowObj = res.options_flow;
+      if(flowObj && typeof flowObj === 'object'){
+        const pcr     = toNum(flowObj.put_call_ratio ?? flowObj.pcr);
+        const callOi  = toNum(flowObj.call_oi ?? flowObj.call_open_interest);
+        const putOi   = toNum(flowObj.put_oi ?? flowObj.put_open_interest);
+        const netFlow = toNum(flowObj.net_flow ?? flowObj.dealer_flow ?? flowObj.net_premium);
+        if(pcr     != null) items.push(['P/C Ratio', pcr.toFixed(2)]);
+        if(callOi  != null) items.push(['Call OI', callOi.toLocaleString()]);
+        if(putOi   != null) items.push(['Put OI', putOi.toLocaleString()]);
+        if(netFlow != null) items.push(['Net Flow', (netFlow >= 0 ? '+' : '') + netFlow.toLocaleString()]);
+        if(pcr==null && callOi==null && putOi==null && netFlow==null){
+          console.warn('[GEX] summary.options_flow had no recognized fields. Keys:', Object.keys(flowObj).join(', '));
+        }
+      }
+
+      const rowsHtml = items.map(([lbl,v]) =>
+        [lbl, escapeHtml(String(v))]
+      );
+      $('macroGrid').innerHTML = rowsHtml.map(([lbl,v]) =>
+        `<div class="macro-item"><div class="lbl">${lbl}</div><div class="v">${v}</div></div>`
+      ).join('');
+      const railGrid = document.getElementById('macroRailGrid');
+      if(railGrid){
+        railGrid.innerHTML = rowsHtml.map(([lbl,v]) =>
+          `<div class="rail-macro-item"><span class="lbl">${lbl}</span><span class="v">${v}</span></div>`
+        ).join('');
+      }
+      $('macroPanel').style.display = 'flex';
+      btn.textContent = 'Reload Macro';
+    }catch(err){
+      alert('Macro load failed: ' + err.message);
+      btn.textContent = origText;
+    }finally{
+      btn.disabled = false;
+    }
+  }
+
+  async function loadLiveLevels(){
+    if(!state.ticker) return;
+    const btn = $('loadLiveLevelsBtn');
+    const origText = btn.textContent;
+    btn.textContent = 'Loading…';
+    btn.disabled = true;
+    try{
+      const res = await fa('/v1/flow/levels/' + encodeURIComponent(state.ticker));
+      // Same field-shape assumption as the settled /v1/exposure/levels this app already
+      // reads (flat gamma_flip/call_wall/put_wall numbers, not nested {strike,gex} objects) —
+      // but handle both shapes defensively since this endpoint hasn't been confirmed before.
+      const unwrap = v => (v && typeof v === 'object' && 'strike' in v) ? v.strike : v;
+      const container = res.levels || res;
+      const liveFlip = toNum(unwrap(container.gamma_flip));
+      const liveCW = toNum(unwrap(container.call_wall));
+      const livePW = toNum(unwrap(container.put_wall));
+      const liveMaxPain = toNum(unwrap(container.max_pain ?? container.maxPain));
+
+      const found = [liveFlip, liveCW, livePW, liveMaxPain].some(v => v !== null);
+      if(!found){
+        throw new Error('No recognizable level fields (gamma_flip/call_wall/put_wall/max_pain). Keys: ' + Object.keys(container).join(', '));
+      }
+
+      // Settled values already loaded this snap, for a quick vs-settled comparison
+      const settledFlip = state.levels && state.levels.gamma_flip != null ? Number(state.levels.gamma_flip) : null;
+      const settledCW = state.levels && state.levels.call_wall != null ? Number(state.levels.call_wall) : null;
+      const settledPW = state.levels && state.levels.put_wall != null ? Number(state.levels.put_wall) : null;
+
+      const rows = [
+        ['Flip', liveFlip, settledFlip],
+        ['Call Wall', liveCW, settledCW],
+        ['Put Wall', livePW, settledPW],
+        ['Max Pain', liveMaxPain, null],
+      ];
+      state.liveLevels = { flip: liveFlip, callWall: liveCW, putWall: livePW, maxPain: liveMaxPain };
+
+      const railGrid = document.getElementById('liveLevelsRailGrid');
+      if(railGrid){
+        railGrid.innerHTML = rows.map(([lbl, live, settled]) => {
+          if(live == null) return `<div class="rail-macro-item"><span class="lbl">${lbl}</span><span class="v">—</span></div>`;
+          let moveTag = '';
+          if(settled != null && settled !== 0){
+            const pctMove = ((live - settled) / settled) * 100;
+            if(Math.abs(pctMove) >= 0.1){
+              moveTag = ` <span style="color:${pctMove > 0 ? 'var(--blue)' : 'var(--orange)'}; font-size:9px;">(${pctMove > 0 ? '+' : ''}${pctMove.toFixed(1)}% vs settled)</span>`;
+            }
+          }
+          return `<div class="rail-macro-item"><span class="lbl">${lbl}</span><span class="v">$${formatStrike(live)}${moveTag}</span></div>`;
+        }).join('');
+      }
+      btn.textContent = 'Reload Live Levels';
+    }catch(err){
+      alert('Live Levels load failed: ' + err.message);
+      btn.textContent = origText;
+    }finally{
+      btn.disabled = false;
+    }
+  }
+
+
+  const NARRATIVE_COLOR_CLASS = {
+    regime: 'narr-regime', gex_change: 'narr-gex_change', key_levels: 'narr-key_levels',
+    flow: 'narr-flow', vanna: 'narr-vanna', charm: 'narr-charm',
+    zero_dte: 'narr-zero_dte', outlook: 'narr-outlook'
+  };
+
+  async function loadNarrative(){
+    if(!state.ticker){ return; }
+    const btn = $('loadNarrativeBtn');
+    const origText = btn.textContent;
+    btn.textContent = 'Loading…';
+    btn.disabled = true;
+    const panel = $('narrativePanel');
+    const content = $('narrativeContent');
+    try{
+      const [res, flowRes] = await Promise.all([
+        fa('/v1/exposure/narrative/' + encodeURIComponent(state.ticker)),
+        // Growth plan+ endpoint — live 0DTE flow since session open on effective OI, unlike
+        // the narrative endpoint's own FLOW field which needs prior-day OI it never seems to
+        // have. Best-effort: falls back silently (tier-restricted, no 0DTE today, etc.)
+        fa('/v1/flow/zero-dte/snapshot/' + encodeURIComponent(state.ticker))
+          .catch(err => { console.warn('[GEX] 0DTE flow snapshot unavailable, FLOW card keeps the narrative endpoint\'s own text:', err.message); return null; }),
+      ]);
+      // `narrative` is confirmed to exist at the top level, but it's not a plain string —
+      // it's a nested object. Try common nested field names before giving up.
+      let text = null;
+      let structured = false;
+      const n = res.narrative;
+
+      const flowDesc = flowRes && flowRes.flow_direction && flowRes.flow_direction.description;
+      if(flowDesc && n && typeof n === 'object'){
+        n.flow = flowDesc;
+      }
+
+      if(typeof n === 'string'){
+        text = n;
+      } else if(n && typeof n === 'object'){
+        text = n.text || n.summary || n.narrative || n.content || n.full_text || n.body;
+        // if it's an object of labeled sections (e.g. {accelerant: "...", flip: "..."}),
+        // render each as its own compact card instead of one long wall of text
+        if(!text){
+          const parts = Object.entries(n)
+            .filter(([k,v]) => typeof v === 'string' && v.length)
+            .map(([k,v]) => {
+              const cls = NARRATIVE_COLOR_CLASS[k] || 'narr-default';
+              const label = k.replace(/_/g, ' ');
+              return `<div class="narr-item"><div class="narr-label ${cls}">${escapeHtml(label)}</div><div class="narr-text">${v.replace(/</g,'&lt;')}</div></div>`;
+            });
+          if(parts.length){ text = parts.join(''); structured = true; }
+        }
+      }
+      if(text && text.length){
+        panel.style.display = 'block';
+        content.innerHTML = structured
+          ? `<div class="narr-grid">${text}</div>`
+          : `<div class="narr-freeform"><strong>Narrative</strong> — ${text.replace(/</g,'&lt;')}</div>`;
+      } else {
+        const nestedKeys = (n && typeof n === 'object') ? Object.keys(n).join(', ') : '(not an object)';
+        throw new Error('narrative field exists but has no usable text. Its keys: ' + nestedKeys);
+      }
+      btn.textContent = 'Reload Narrative';
+    }catch(err){
+      alert('Narrative load failed: ' + err.message);
+      btn.textContent = origText;
+    }finally{
+      btn.disabled = false;
+    }
+  }
+
+  function setStatus(s){
+    statusDot.className = 'status-dot' + (s === 'live' ? ' live' : s === 'err' ? ' err' : '');
+  }
+  function showError(msg){
+    gridWrap.innerHTML = `<div class="empty-state"><div class="big" style="color:var(--red)">Error</div>${escapeHtml(msg)}</div>`;
+  }
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function percentile(arr, p){
+    if(!arr.length) return 0;
+    const sorted = [...arr].sort((a,b)=>a-b);
+    const idx = Math.min(sorted.length - 1, Math.floor(p * sorted.length));
+    return sorted[idx];
+  }
+  function gexColor(value, maxAbs){
+    if(!maxAbs || maxAbs <= 0) return 'rgba(255,255,255,0.03)';
+    const t = Math.min(Math.abs(value) / maxAbs, 1);
+    const eased = Math.pow(t, 0.75);
+    if(value >= 0){
+      return `rgba(58,160,255,${(0.05 + eased*0.80).toFixed(3)})`;
+    }
+    return `rgba(255,138,61,${(0.05 + eased*0.80).toFixed(3)})`;
+  }
+  function fmtMoney(v){
+    if(v == null || isNaN(v)) return '—';
+    const abs = Math.abs(v);
+    const sign = v < 0 ? '-' : '';
+    if(abs >= 1e9) return sign + '$' + (abs/1e9).toFixed(2) + 'B';
+    if(abs >= 1e6) return sign + '$' + (abs/1e6).toFixed(1) + 'M';
+    if(abs >= 1e3) return sign + '$' + (abs/1e3).toFixed(0) + 'K';
+    return sign + '$' + abs.toFixed(0);
+  }
+  function fmtNum(v){
+    if(v == null || isNaN(v)) return '—';
+    return v.toLocaleString();
+  }
+
+  function render(){
+    renderMetrics();
+    renderGrid();
+    renderBudget();
+  }
+
+  function renderMetrics(){
+    $('mSpot').textContent = state.spot != null ? '$' + state.spot.toFixed(2) : '—';
+
+    let totalNet = 0;
+    Object.values(state.gexByExp).forEach(d => totalNet += (d.net_gex || 0));
+    const mNetGex = $('mNetGex');
+    mNetGex.textContent = fmtMoney(totalNet);
+    mNetGex.className = 'v ' + (totalNet >= 0 ? 'pos' : 'neg');
+
+    const baseline = getOrSetBaseline(totalNet);
+    const chipEl = $('mNetGexChip');
+    if(baseline && Math.abs(baseline.totalNet) > 1){
+      const pct = ((totalNet - baseline.totalNet) / Math.abs(baseline.totalNet)) * 100;
+      if(pct > 3){
+        chipEl.textContent = `▲ Building +${pct.toFixed(0)}% vs open`;
+        chipEl.style.color = 'var(--blue)';
+      } else if(pct < -3){
+        chipEl.textContent = `▼ Fading ${pct.toFixed(0)}% vs open`;
+        chipEl.style.color = 'var(--orange)';
+      } else {
+        chipEl.textContent = 'Flat vs open';
+        chipEl.style.color = 'var(--text-faint)';
+      }
+    } else {
+      chipEl.textContent = '';
+    }
+
+    // MVC · Week — the single biggest individual |net GEX| cell across all currently-loaded
+    // expirations (one specific day + strike), NOT the sum of a strike's GEX across every day.
+    // Summing across days was misleading: a strike could show as "MVC" purely from adding up
+    // several mediocre days, even when some other single day/strike combo was far larger on
+    // its own — exactly the $720 (summed) vs Friday $740 (actual single biggest day) mismatch.
+    let weekStrike = null, weekVal = 0, weekAbs = -1, weekExp = null;
+    Object.entries(state.gexByExp).forEach(([exp, d]) => {
+      if(!d || !d.strikes) return;
+      d.strikes.forEach(s => {
+        const v = s.net_gex || 0;
+        if(Math.abs(v) > weekAbs){ weekAbs = Math.abs(v); weekStrike = s.strike; weekVal = v; weekExp = exp; }
+      });
+    });
+    state.mvcStrike = weekStrike;
+    const mMvcWeek = document.getElementById('mMvcWeek');
+    const mMvcWeekSub = document.getElementById('mMvcWeekSub');
+    if(mMvcWeek) mMvcWeek.textContent = weekStrike != null ? formatStrike(weekStrike) : '—';
+    if(mMvcWeekSub) mMvcWeekSub.textContent = weekStrike != null ? (fmtMoney(weekVal) + (weekExp ? ' · ' + formatExpHeader(weekExp) : '')) : '';
+
+    // "day" MVC — the nearest single expiration's own largest |GEX| strike, independent of
+    // whichever expirations happen to be loaded for the current view mode.
+    const expDatesSorted = Object.keys(state.gexByExp).sort();
+    const nearestExpKey = expDatesSorted[0];
+    const nearestExpData = nearestExpKey ? state.gexByExp[nearestExpKey] : null;
+    let mvcDayStrike = null, mvcDayVal = 0, mvcDayAbs = -1;
+    if(nearestExpData && nearestExpData.strikes){
+      nearestExpData.strikes.forEach(s => {
+        const v = s.net_gex || 0;
+        if(Math.abs(v) > mvcDayAbs){ mvcDayAbs = Math.abs(v); mvcDayStrike = s.strike; mvcDayVal = v; }
+      });
+    }
+    const mMvcDay = document.getElementById('mMvcDay');
+    const mMvcDaySub = document.getElementById('mMvcDaySub');
+    if(mMvcDay) mMvcDay.textContent = mvcDayStrike != null ? formatStrike(mvcDayStrike) : '—';
+    if(mMvcDaySub) mMvcDaySub.textContent = mvcDayStrike != null ? fmtMoney(mvcDayVal) : '';
+
+    const mRegime = $('mRegime');
+    mRegime.textContent = totalNet >= 0 ? 'Positive (calm)' : 'Negative (volatile)';
+    mRegime.className = 'v ' + (totalNet >= 0 ? 'pos' : 'neg');
+
+    const mPin = $('mPin');
+    const mPinSub = $('mPinSub');
+    if(state.pinRisk && state.pinRisk.live_pin_risk != null){
+      let score = Number(state.pinRisk.live_pin_risk);
+      if(score <= 1) score = score * 100; // defensive: handle a 0-1 scale if ever returned
+      mPin.textContent = score.toFixed(0) + '/100';
+      mPin.style.color = score >= 70 ? 'var(--cyan)' : (score >= 40 ? 'var(--gold)' : 'var(--text-faint)');
+      const target = state.pinRisk.magnet_strike;
+      const dist = state.pinRisk.distance_to_magnet_pct;
+      mPinSub.textContent = target != null ? 'magnet $' + Number(target).toFixed(2) + (dist != null ? ' (' + Number(dist).toFixed(1) + '%)' : '') : '';
+    } else if(state.pinRiskError){
+      mPin.textContent = 'err';
+      mPin.style.color = 'var(--red)';
+      mPinSub.textContent = state.pinRiskError;
+    } else if(state.pinRisk){
+      // call succeeded (no exception) but live_pin_risk wasn't where we expected —
+      // show the actual top-level keys so the real response shape is visible
+      mPin.textContent = '?';
+      mPin.style.color = 'var(--orange)';
+      mPinSub.textContent = 'keys: ' + Object.keys(state.pinRisk).join(',');
+    } else {
+      mPin.textContent = '—';
+      mPin.style.color = '';
+      mPinSub.textContent = '';
+    }
+
+
+    if(state.volatility && state.volatility.atm_iv != null){
+      $('mIv').textContent = Number(state.volatility.atm_iv).toFixed(1) + '%';
+      const nearestExp = state.selectedExpirations[0];
+      if(nearestExp && state.spot){
+        const dte = Math.max(dteFor(nearestExp), 0.4);
+        const em = state.spot * (state.volatility.atm_iv/100) * Math.sqrt(dte/365);
+        $('mEm').textContent = '±$' + em.toFixed(2);
+        state.emValue = em;
+      } else {
+        $('mEm').textContent = '—';
+        state.emValue = null;
+      }
+    } else {
+      $('mIv').textContent = '— (load)';
+      $('mEm').textContent = '—';
+      state.emValue = null;
+    }
+
+    // 0DTE-specific pills — only shown when 0DTE mode is on and the dedicated endpoint returned data
+    const showZdte = state.mode0dte && state.zeroDte;
+    document.querySelectorAll('.zdte-only').forEach(el => { el.style.display = showZdte ? 'flex' : 'none'; });
+    if(showZdte){
+      const zd = state.zeroDte;
+      if(zd.pin_risk){
+        $('mZdtePin').textContent = zd.pin_risk.pin_score != null ? Number(zd.pin_risk.pin_score).toFixed(0) + '/100' : '—';
+        $('mZdteMagnet').textContent = zd.pin_risk.magnet_strike != null ? 'magnet $' + Number(zd.pin_risk.magnet_strike).toFixed(2) : '';
+      }
+      if(zd.expected_move && zd.expected_move.remaining_1sd_dollars != null){
+        $('mZdteMove').textContent = '±$' + Number(zd.expected_move.remaining_1sd_dollars).toFixed(2);
+      }
+      $('mZdteClose').textContent = zd.time_to_close_hours != null ? Number(zd.time_to_close_hours).toFixed(1) + 'h' : '—';
+      if(zd.decay){
+        $('mZdteTheta').textContent = zd.decay.theta_per_hour_remaining != null ? fmtMoney(zd.decay.theta_per_hour_remaining) : '—';
+        $('mZdteAccel').textContent = zd.decay.gamma_acceleration != null ? Number(zd.decay.gamma_acceleration).toFixed(1) + 'x' : '—';
+      }
+    }
+  }
+
+  function renderGrid(){
+    const exps = state.selectedExpirations;
+    if(!exps.length){
+      gridWrap.innerHTML = `<div class="empty-state"><div class="big">No data</div>Try loading again.</div>`;
+      return;
+    }
+
+    const strikeSet = new Set();
+    exps.forEach(e => {
+      const d = state.gexByExp[e];
+      if(d && d.strikes) d.strikes.forEach(s => strikeSet.add(s.strike));
+    });
+    let strikes = [...strikeSet].sort((a,b) => b - a);
+
+    if(state.spot != null && strikes.length){
+      let atmIdx = 0, best = Infinity;
+      strikes.forEach((s,i) => { const diff = Math.abs(s - state.spot); if(diff < best){ best = diff; atmIdx = i; } });
+      const lo = Math.max(0, atmIdx - state.strikeRange);
+      const hi = Math.min(strikes.length, atmIdx + state.strikeRange + 1);
+      strikes = strikes.slice(lo, hi);
+    }
+
+    const cellData = {};
+    const netByStrike = {};
+    exps.forEach(e => {
+      const d = state.gexByExp[e];
+      if(!d || !d.strikes) return;
+      d.strikes.forEach(s => {
+        cellData[s.strike + '|' + e] = s;
+        netByStrike[s.strike] = (netByStrike[s.strike] || 0) + (s.net_gex || 0);
+      });
+    });
+
+    const visibleVals = [];
+    strikes.forEach(st => exps.forEach(e => {
+      const c = cellData[st + '|' + e];
+      if(c) visibleVals.push(Math.abs(c.net_gex || 0));
+    }));
+    const maxAbs = percentile(visibleVals, 0.92) || 1;
+    const netVals = strikes.map(s => Math.abs(netByStrike[s] || 0));
+    const netMaxAbs = percentile(netVals, 0.92) || 1;
+
+    // Live-vs-settled diff: same percentile-based scaling as raw GEX, but computed only over
+    // whatever's currently visible so the overlay's color intensity stays meaningful even if
+    // Diff was loaded for a different set of columns than what's shown now.
+    let maxAbsDelta = 1;
+    if(state.liveDiffOn){
+      const visibleDeltas = [];
+      strikes.forEach(st => exps.forEach(e => {
+        const byStrike = state.liveDiffByExp[e];
+        if(byStrike && byStrike[st] !== undefined) visibleDeltas.push(Math.abs(byStrike[st]));
+      }));
+      maxAbsDelta = percentile(visibleDeltas, 0.92) || 1;
+    }
+    const strikeBaseline = getOrSetStrikeBaseline(netByStrike);
+
+    // Biggest Building / Fading strike (largest positive / negative % change vs first snapshot today)
+    {
+      let bestBuild = null, bestBuildPct = -Infinity;
+      let bestFade = null, bestFadePct = Infinity;
+      strikes.forEach(s => {
+        const baseVal = strikeBaseline[s];
+        if(baseVal == null || Math.abs(baseVal) < 1e5) return;
+        const pct = ((Math.abs(netByStrike[s] || 0) - Math.abs(baseVal)) / Math.abs(baseVal)) * 100;
+        if(pct > bestBuildPct){ bestBuildPct = pct; bestBuild = s; }
+        if(pct < bestFadePct){ bestFadePct = pct; bestFade = s; }
+      });
+      const mBuild = $('mBuildStrike'), mFade = $('mFadeStrike');
+      if(mBuild){
+        mBuild.textContent = bestBuild != null && bestBuildPct > 3 ? '$' + formatStrike(bestBuild) + ' +' + bestBuildPct.toFixed(0) + '%' : '—';
+      }
+      if(mFade){
+        mFade.textContent = bestFade != null && bestFadePct < -3 ? '$' + formatStrike(bestFade) + ' ' + bestFadePct.toFixed(0) + '%' : '—';
+      }
+    }
+
+    // GREW: top movers ranked by raw $ magnitude change (not %), shown as before → after,
+    // matching the "since first snapshot today" framing used elsewhere.
+    {
+      const movers = [];
+      strikes.forEach(s => {
+        const baseVal = strikeBaseline[s];
+        const curVal = netByStrike[s] || 0;
+        if(baseVal == null) return;
+        const delta = Math.abs(curVal) - Math.abs(baseVal);
+        if(Math.abs(delta) < 1e6) return; // ignore noise under $1M
+        movers.push({ strike: s, before: baseVal, after: curVal, delta });
+      });
+      movers.sort((a,b) => Math.abs(b.delta) - Math.abs(a.delta));
+      const top = movers.slice(0, 3);
+      const grewEl = $('grewRow');
+      if(top.length){
+        grewEl.style.display = 'block';
+        grewEl.innerHTML = '<span class="grew-label">Grew today</span>' + top.map(m => {
+          const pct = Math.abs(m.before) > 1e5 ? (((Math.abs(m.after) - Math.abs(m.before)) / Math.abs(m.before)) * 100).toFixed(0) : null;
+          const cls = m.delta >= 0 ? 'grew-up' : 'grew-down';
+          const arrow = m.delta >= 0 ? '▲' : '▼';
+          return `<span class="grew-strike">$${formatStrike(m.strike)}</span> ${fmtMoney(m.before)} → ${fmtMoney(m.after)} <span class="${cls}">${arrow}${pct != null ? pct + '%' : ''}</span>`;
+        }).join(' &nbsp;·&nbsp; ');
+      } else {
+        grewEl.style.display = 'none';
+      }
+    }
+
+    let atmStrike = null;
+    if(state.spot != null && strikes.length){
+      let best = Infinity;
+      strikes.forEach(s => { const diff = Math.abs(s - state.spot); if(diff < best){ best = diff; atmStrike = s; } });
+    }
+    const flipVal = state.levels && state.levels.gamma_flip != null ? Number(state.levels.gamma_flip) : null;
+    let flipStrike = null;
+    if(flipVal != null && strikes.length){
+      let best = Infinity;
+      strikes.forEach(s => { const diff = Math.abs(s - flipVal); if(diff < best){ best = diff; flipStrike = s; } });
+    }
+    const pinTargetVal = state.pinRisk && state.pinRisk.magnet_strike != null ? Number(state.pinRisk.magnet_strike) : null;
+    let pinStrike = null;
+    if(pinTargetVal != null && strikes.length){
+      let best = Infinity;
+      strikes.forEach(s => { const diff = Math.abs(s - pinTargetVal); if(diff < best){ best = diff; pinStrike = s; } });
+    }
+
+    // 0DTE magnet — distinct from the general Pin marker; only present when 0DTE mode is on
+    const magnetVal = state.zeroDte && state.zeroDte.pin_risk && state.zeroDte.pin_risk.magnet_strike != null
+      ? Number(state.zeroDte.pin_risk.magnet_strike) : null;
+    let magnetStrike = null;
+    if(magnetVal != null && strikes.length){
+      let best = Infinity;
+      strikes.forEach(s => { const diff = Math.abs(s - magnetVal); if(diff < best){ best = diff; magnetStrike = s; } });
+    }
+
+    // Bump1 (gatekeeper node): 2nd-strongest |net GEX| strike sitting strictly between spot
+    // and the week's MVC. Price has to fight through this one before it can reach the MVC.
+    // This is the original whole-week row tag — kept alongside the newer per-column Bump2
+    // (the runner-up opposite-sign strike, computed inside computeExpiryMeta()) since they're
+    // two genuinely different concepts the user wants both visible.
+    let bump1Strike = null;
+    if(state.spot != null && state.mvcStrike != null){
+      const lo = Math.min(state.spot, state.mvcStrike);
+      const hi = Math.max(state.spot, state.mvcStrike);
+      let bestAbs = -1;
+      strikes.forEach(s => {
+        if(s > lo && s < hi && s !== state.mvcStrike){
+          const v = Math.abs(netByStrike[s] || 0);
+          if(v > bestAbs){ bestAbs = v; bump1Strike = s; }
+        }
+      });
+    }
+
+    // Nie (midpoint): strike nearest the midpoint between call wall and put wall — the no-man's-land
+    // between the two dominant dealer positions, where directional conviction is weakest.
+    let nieStrike = null;
+    if(state.levels && state.levels.call_wall != null && state.levels.put_wall != null && strikes.length){
+      const mid = (Number(state.levels.call_wall) + Number(state.levels.put_wall)) / 2;
+      let best = Infinity;
+      strikes.forEach(s => { const diff = Math.abs(s - mid); if(diff < best){ best = diff; nieStrike = s; } });
+    }
+
+    // Reversal is now computed per-expiration inside computeExpiryMeta() below, matching
+    // MVC/CW/PW/Flip — see the per-cell rendering in the exps.forEach cell loop.
+
+
+    // fast-move zone. Threshold set relative to the same percentile scale used for cell coloring.
+    let voidStrikes = new Set();
+    {
+      const voidThreshold = netMaxAbs * 0.06;
+      let runStart = -1, bestRun = [];
+      for(let i = 0; i <= strikes.length; i++){
+        const thin = i < strikes.length && Math.abs(netByStrike[strikes[i]] || 0) <= voidThreshold;
+        if(thin){
+          if(runStart === -1) runStart = i;
+        } else {
+          if(runStart !== -1){
+            const run = strikes.slice(runStart, i);
+            if(run.length > bestRun.length) bestRun = run;
+            runStart = -1;
+          }
+        }
+      }
+      if(bestRun.length >= 3) voidStrikes = new Set(bestRun);
+    }
+
+    // EM bands: mark the nearest visible strike to spot ± 1x/1.5x/2x the expected move.
+    const emBandStrikes = {}; // strike -> label, e.g. "1x"
+    if(state.emValue && state.spot != null && strikes.length){
+      [1, 1.5, 2].forEach(mult => {
+        [state.spot + state.emValue*mult, state.spot - state.emValue*mult].forEach(target => {
+          let best = Infinity, nearest = null;
+          strikes.forEach(s => { const diff = Math.abs(s - target); if(diff < best){ best = diff; nearest = s; } });
+          if(nearest != null && !(nearest in emBandStrikes)){
+            emBandStrikes[nearest] = mult % 1 === 0 ? mult + 'x' : mult + 'x';
+          }
+        });
+      });
+    }
+
+    // per-expiration call/put wall + MVC, computed over each expiry's full chain
+    const expMeta = {};
+    exps.forEach(e => { expMeta[e] = computeExpiryMeta(state.gexByExp[e]); });
+
+    // Bump2 — a single cell, not one per column: the heaviest |net GEX| strike strictly
+    // between spot and MVC, scoped ONLY to today's (nearest) expiration. Only renders when
+    // that expiration is one of the currently visible columns.
+    let bump2Strike = null, bump2Exp = null;
+    {
+      const todayExp = state.selectedExpirations[0];
+      const todayData = todayExp ? state.gexByExp[todayExp] : null;
+      const todayMvc = todayExp ? expMeta[todayExp].mvcStrike : null;
+      if(todayData && todayData.strikes && todayMvc != null && state.spot != null && exps.includes(todayExp)){
+        const lo = Math.min(state.spot, todayMvc);
+        const hi = Math.max(state.spot, todayMvc);
+        let bestAbs = -1;
+        todayData.strikes.forEach(s => {
+          if(s.strike > lo && s.strike < hi && s.strike !== todayMvc){
+            const v = Math.abs(s.net_gex || 0);
+            if(v > bestAbs){ bestAbs = v; bump2Strike = s.strike; }
+          }
+        });
+        if(bump2Strike != null) bump2Exp = todayExp;
+      }
+    }
+
+    const totalStrikes = state.strikeRange * 2;
+    let html = `<table class="gex-grid"><thead><tr><th class="strike-head">
+      <div class="strike-head-label">Strike</div>
+      <div class="strike-range-picker">
+        ${[20,40,60].map(t => `<button class="srp-btn${totalStrikes===t?' active':''}" data-total="${t}">${t}</button>`).join('')}
+      </div>
+    </th>`;
+    exps.forEach(e => {
+      const meta = expMeta[e];
+      const mvcHtml = meta.mvcStrike != null ? `<div class="exp-mvc">MVC $${formatStrike(meta.mvcStrike)}</div>` : '';
+      let wallsHtml = '';
+      if(meta.callWall != null){
+        const cwPct = state.spot ? ' (' + (meta.callWall >= state.spot ? '+' : '') + (((meta.callWall - state.spot)/state.spot)*100).toFixed(1) + '%)' : '';
+        const pwPct = state.spot ? ' (' + (meta.putWall >= state.spot ? '+' : '') + (((meta.putWall - state.spot)/state.spot)*100).toFixed(1) + '%)' : '';
+        wallsHtml = `<div class="exp-walls"><span class="cw">CW $${formatStrike(meta.callWall)}${cwPct}</span></div><div class="exp-walls"><span class="pw">PW $${formatStrike(meta.putWall)}${pwPct}</span></div>`;
+      }
+      const opexHtml = isOpexFriday(e) ? '<div class="opex-badge">OPEX</div>' : '';
+      const flipHtml = meta.flipStrike != null ? `<div class="exp-flip">Flip $${formatStrike(meta.flipStrike)}</div>` : '';
+      html += `<th><div class="exp-date">${formatExpHeader(e)}</div>${opexHtml}${mvcHtml}${wallsHtml}${flipHtml}</th>`;
+    });
+    html += '<th class="netcol-head">Net GEX by strike →</th></tr></thead><tbody>';
+
+    strikes.forEach(strike => {
+      const isAtm = strike === atmStrike;
+      const isFlip = strike === flipStrike;
+      const isPin = strike === pinStrike;
+      const isBump1 = strike === bump1Strike;
+      const isNie = strike === nieStrike;
+      const isSurge = state.surgeStrike != null && strike === state.surgeStrike;
+      const isMagnet = magnetStrike != null && strike === magnetStrike;
+      const isVoid = voidStrikes.has(strike);
+      const emLabel = emBandStrikes[strike];
+      const isMvcRow = strike === state.mvcStrike;
+      const rowClasses = [isAtm ? 'atm-row' : '', isFlip ? 'flip-row' : '', isPin ? 'pin-row' : '', isBump1 ? 'bump1-row' : '', isNie ? 'nie-row' : '', isSurge ? 'surge-row' : '', isMagnet ? 'magnet-row' : '', isVoid ? 'void-row' : '', emLabel ? 'em-row' : ''].filter(Boolean).join(' ');
+      const chg = pctChangeBadge(netByStrike[strike] || 0, strikeBaseline[strike]);
+      // vs-open change now lives in the Net GEX by strike column, keeping the strike column
+      // itself down to just the level tags. Reversal and Bump no longer appear here — both
+      // are per-expiration cell markers now (see the exps.forEach loop below), since each is
+      // a different strike in every column, not one strike for the whole week.
+      html += `<tr class="${rowClasses}"><th class="strike-cell"><div class="strike-cell-inner"><span class="strike-tags">${isMvcRow ? '<span class="mvc-star" title="MVC — largest |GEX| strike">★</span>' : ''}${isAtm ? '<span class="spot-tag" title="Spot — current price">◀</span>' : ''}${isPin ? '<span class="pin-tag" title="Pin — pin-risk target strike">◉</span>' : ''}${isBump1 ? '<span class="bump1-tag" title="Bump1 — gatekeeper node between spot and MVC">‖</span>' : ''}${isNie ? '<span class="nie-tag" title="Nie — midpoint between call wall and put wall">⊙</span>' : ''}${isSurge ? `<span class="surge-tag" title="Hot — biggest live-vs-settled GEX divergence today, ${state.surgeExp ? escapeHtml(state.surgeExp) : ''}">⚡</span>` : ''}${isMagnet ? '<span class="magnet-tag" title="Magnet — 0DTE pin target into the close">⊕</span>' : ''}${isVoid ? '<span class="void-tag" title="Void — air pocket, thin GEX">≈</span>' : ''}${emLabel ? `<span class="em-tag" title="${emLabel} expected move from spot">◆${emLabel}</span>` : ''}</span><span class="strike-num">${formatStrike(strike)}</span></div></th>`;
+      exps.forEach(e => {
+        const c = cellData[strike + '|' + e];
+        if(!c){
+          html += `<td class="empty">—</td>`;
+        } else {
+          const byStrike = state.liveDiffOn ? state.liveDiffByExp[e] : null;
+          const hasDelta = byStrike && byStrike[strike] !== undefined;
+          const delta = hasDelta ? byStrike[strike] : null;
+          // In Diff mode: color and primary value come from live-vs-settled divergence.
+          // Cells with no diff data yet (column wasn't loaded when Diff was toggled on)
+          // fall back to showing raw GEX, dimmed, so the grid doesn't show blank gaps.
+          const bg = (state.liveDiffOn && hasDelta) ? gexColor(delta, maxAbsDelta) : gexColor(c.net_gex || 0, maxAbs);
+          const isMvcCell = expMeta[e].mvcStrike === strike;
+          const isReversalCell = expMeta[e].reversalStrike === strike;
+          const isBump2Cell = bump2Exp === e && bump2Strike === strike;
+          const oiChange = (c.call_oi_change || 0) + (c.put_oi_change || 0);
+          const arrow = oiChange > 0 ? '<span class="oi-up">▲</span>' : (oiChange < 0 ? '<span class="oi-down">▼</span>' : '');
+          const cellCls = [isMvcCell ? 'mvc-cell' : '', isReversalCell ? 'reversal-cell' : '', isBump2Cell ? 'bump2-cell' : '', (state.liveDiffOn && !hasDelta) ? 'diff-stale-cell' : ''].filter(Boolean).join(' ');
+          const reversalTagHtml = isReversalCell ? '<span class="reversal-cell-tag" title="Reversal — heaviest opposite-sign strike in this expiration">⇄</span>' : '';
+          const bump2TagHtml = isBump2Cell ? '<span class="bump2-cell-tag" title="Bump2 — heaviest GEX strike between spot and MVC, today only">‖</span>' : '';
+          const mainVal = (state.liveDiffOn && hasDelta)
+            ? `<span class="diff-val" title="Live flow-GEX minus this morning's settled GEX">Δ${fmtMoney(delta)}</span>`
+            : fmtMoney(c.net_gex);
+          html += `<td class="${cellCls}" style="background:${bg}" data-strike="${strike}" data-exp="${e}"><div class="cellval">${reversalTagHtml}${bump2TagHtml}${mainVal}${arrow}</div></td>`;
+        }
+      });
+      const net = netByStrike[strike] || 0;
+      const barPct = Math.min(Math.abs(net) / netMaxAbs, 1) * 50;
+      const barColor = net >= 0 ? 'var(--blue)' : 'var(--orange)';
+      const barLeft = net >= 0 ? 50 : (50 - barPct);
+      const barWidth = barPct;
+      html += `<td class="net-cell"><div class="net-bar-wrap">
+        <div class="net-bar-track">
+          <div class="net-bar-fill" style="left:${barLeft}%; width:${barWidth}%; background:${barColor};"></div>
+        </div>
+        <div class="net-val" style="color:${net>=0?'var(--blue)':'var(--orange)'}">${fmtMoney(net)}</div>
+        ${chg}
+      </div></td>`;
+      html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    gridWrap.innerHTML = html;
+
+    gridWrap.querySelectorAll('td[data-strike]').forEach(td => {
+      td.addEventListener('click', () => openDetail(parseFloat(td.dataset.strike), td.dataset.exp));
+    });
+    gridWrap.querySelectorAll('.srp-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.strikeRange = parseInt(btn.dataset.total) / 2;
+        savePrefs();
+        render();
+      });
+    });
+
+    // Firefox doesn't reliably support left:0 sticky on table cells, so the strike
+    // column's horizontal pin is driven manually via transform, synced to scroll.
+    state.stickyLeftEls = Array.from(gridWrap.querySelectorAll('.strike-cell, .strike-head'));
+    applyStickyTransform();
+  }
+
+  function applyStickyTransform(){
+    const tx = gridWrap.scrollLeft;
+    (state.stickyLeftEls || []).forEach(el => { el.style.transform = 'translateX(' + tx + 'px)'; });
+  }
+
+  function formatStrike(s){
+    return Number.isInteger(s) ? String(s) : s.toFixed(2);
+  }
+
+  function openDetail(strike, exp){
+    const d = state.gexByExp[exp];
+    if(!d) return;
+    const c = d.strikes.find(s => s.strike === strike);
+    if(!c) return;
+    dpTitle.textContent = `${state.ticker} ${formatStrike(strike)} · ${exp}`;
+    const items = [
+      ['Net GEX', fmtMoney(c.net_gex)],
+      ['Call GEX', fmtMoney(c.call_gex)],
+      ['Put GEX', fmtMoney(c.put_gex)],
+      ['Call OI', fmtNum(c.call_oi)],
+      ['Put OI', fmtNum(c.put_oi)],
+      ['Call OI Δ', c.call_oi_change != null ? (c.call_oi_change>=0?'+':'')+fmtNum(c.call_oi_change) : '—'],
+      ['Put OI Δ', c.put_oi_change != null ? (c.put_oi_change>=0?'+':'')+fmtNum(c.put_oi_change) : '—'],
+      ['Call Vol', fmtNum(c.call_volume)],
+      ['Put Vol', fmtNum(c.put_volume)],
+    ];
+    dpGrid.innerHTML = items.map(([lbl,v]) => `<div class="dp-item"><div class="lbl">${lbl}</div><div class="v">${v}</div></div>`).join('');
+    detailPanel.classList.add('open');
+  }
+  $('dpClose').addEventListener('click', () => detailPanel.classList.remove('open'));
+
+  const POLL_STEPS = [
+    { secs: 0, label: 'Poll: Off' },
+    { secs: 30, label: 'Poll: 30s' },
+    { secs: 60, label: 'Poll: 60s' },
+    { secs: 300, label: 'Poll: 5m' },
+  ];
+  function setPoll(secs){
+    state.pollSecs = secs;
+    const btn = $('pollToggleBtn');
+    const step = POLL_STEPS.find(s => s.secs === secs) || POLL_STEPS[0];
+    btn.textContent = step.label;
+    btn.dataset.secs = secs;
+    btn.classList.toggle('active', secs > 0);
+    if(state.pollTimer){ clearInterval(state.pollTimer); state.pollTimer = null; }
+    if(secs > 0){
+      const floor = Math.max(secs, estimateSnapCost() > 6 ? 30 : 15) * 1000;
+      state.pollTimer = setInterval(() => runSnap(true), floor);
+    }
+  }
+  $('pollToggleBtn').addEventListener('click', () => {
+    const cur = parseInt($('pollToggleBtn').dataset.secs);
+    const idx = POLL_STEPS.findIndex(s => s.secs === cur);
+    const next = POLL_STEPS[(idx + 1) % POLL_STEPS.length];
+    setPoll(next.secs);
+  });
+
+  tickerForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const t = tickerInput.value.trim().toUpperCase();
+    if(!t) return;
+    state.ticker = t;
+    state.allExpirations = [];
+    state.manualPick = null;
+    savePrefs();
+    updateFavBtn();
+    renderWatchlist();
+    runSnap(false);
+  });
+
+  $('favBtn').addEventListener('click', () => {
+    let list = loadWatchlist();
+    if(list.includes(state.ticker)){
+      list = list.filter(t => t !== state.ticker);
+    } else {
+      list.push(state.ticker);
+    }
+    saveWatchlist(list);
+    updateFavBtn();
+    renderWatchlist();
+  });
+
+  if(railTickerInput){
+    railTickerInput.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        tickerInput.value = railTickerInput.value;
+        tickerForm.requestSubmit();
+      }
+    });
+    $('railLoadBtn').addEventListener('click', () => {
+      tickerInput.value = railTickerInput.value;
+      tickerForm.requestSubmit();
+    });
+    $('railFavBtn').addEventListener('click', () => { $('favBtn').click(); });
+  }
+
+  $('weekBtn').addEventListener('click', () => {
+    state.weekMode = true;
+    state.mode0dte = false;
+    state.manualPick = null;
+    $('weekBtn').classList.add('active');
+    $('mode0dte').classList.remove('active');
+    if(state.allExpirations.length) runSnap(false);
+  });
+
+  $('mode0dte').addEventListener('click', () => {
+    state.mode0dte = !state.mode0dte;
+    state.weekMode = !state.mode0dte;
+    state.manualPick = null;
+    $('mode0dte').classList.toggle('active', state.mode0dte);
+    $('weekBtn').classList.toggle('active', state.weekMode);
+    if(state.allExpirations.length) runSnap(false);
+  });
+
+  $('loadIvBtn').addEventListener('click', loadIv);
+  $('loadSurgeBtn').addEventListener('click', loadSurge);
+  $('liveDiffBtn').addEventListener('click', toggleLiveDiff);
+  $('loadNarrativeBtn').addEventListener('click', loadNarrative);
+  $('loadMacroBtn').addEventListener('click', loadMacro);
+  $('loadLiveLevelsBtn').addEventListener('click', loadLiveLevels);
+  $('railSummaryRefreshBtn').addEventListener('click', loadWatchlistSummaries);
+  $('macroCloseBtn').addEventListener('click', () => {
+    $('macroPanel').style.display = 'none';
+  });
+  $('narrativeCloseBtn').addEventListener('click', () => {
+    $('narrativePanel').style.display = 'none';
+  });
+
+  $('apiKeyBtn').addEventListener('click', () => {
+    const key = prompt('FlashAlpha X-Api-Key (stored only in this browser via localStorage):', state.apiKey || '');
+    if(key !== null){
+      state.apiKey = key.trim();
+      localStorage.setItem(LS_APIKEY, state.apiKey);
+      state.dailyCapConfirmed = false;
+      loadAccountQuota();
+    }
+  });
+
+  $('pickExpBtn').addEventListener('click', async () => {
+    if(!state.allExpirations.length){
+      try{
+        const chainJson = await fa('/v1/options/' + encodeURIComponent(state.ticker));
+        state.allExpirations = normalizeChain(chainJson);
+      }catch(err){ alert(err.message); return; }
+    }
+    const current = new Set(state.manualPick || pickExpirations());
+    pickerList.innerHTML = state.allExpirations.map(e =>
+      `<label><input type="checkbox" value="${e}" ${current.has(e) ? 'checked' : ''}> ${e} <span style="color:var(--text-faint)">(${Math.round(dteFor(e))}DTE)</span></label>`
+    ).join('');
+    pickerOverlay.classList.add('open');
+  });
+  $('pickerCancel').addEventListener('click', () => pickerOverlay.classList.remove('open'));
+  $('pickerApply').addEventListener('click', () => {
+    const checked = [...pickerList.querySelectorAll('input:checked')].map(i => i.value);
+    if(checked.length > 16){ alert('Max 16 expirations to protect your daily request budget.'); return; }
+    state.manualPick = checked.length ? checked : null;
+    if(state.manualPick){
+      state.weekMode = false;
+      state.mode0dte = false;
+      $('weekBtn').classList.remove('active');
+      $('mode0dte').classList.remove('active');
+    }
+    pickerOverlay.classList.remove('open');
+    renderBudget();
+    runSnap(false);
+  });
+
+  renderBudget();
+  $('weekBtn').classList.add('active');
+  gridWrap.addEventListener('scroll', () => {
+    if(state._stickyRaf) return;
+    state._stickyRaf = requestAnimationFrame(() => { applyStickyTransform(); state._stickyRaf = null; });
+  });
+  updateFavBtn();
+  renderWatchlist();
+  if(!state.apiKey){
+    gridWrap.innerHTML = `<div class="empty-state"><div class="big">Add your API key to begin</div>Tap "API Key" above and paste your FlashAlpha X-Api-Key.</div>`;
+  } else {
+    loadAccountQuota();
+    runSnap(false);
+  }
+
+})();
+</script>
+</body>
+</html>
