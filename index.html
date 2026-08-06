@@ -173,6 +173,16 @@
     background:transparent; border:1px solid var(--border); color:var(--text-dim);
     font-size:11px; width:22px; height:22px; padding:0; border-radius:6px; flex-shrink:0; cursor:pointer;
   }
+  .dealer-risk-banner{
+    display:none; align-items:center; gap:10px; flex-wrap:wrap;
+    background:rgba(58,160,255,0.10); border-bottom:1px solid var(--blue);
+    color:var(--text); font-size:11.5px; font-family:var(--sans); line-height:1.5;
+    padding:8px 14px; flex-shrink:0;
+  }
+  .dealer-risk-banner .lbl{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.4px; }
+  .dealer-risk-banner .direction-pill{
+    font-family:var(--mono); font-weight:700; font-size:10.5px; padding:2px 8px; border-radius:8px;
+  }
   .control-group{ display:flex; align-items:center; gap:4px; flex-shrink:0; }
   .control-label{ font-family:var(--mono); font-size:9px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.4px; margin-right:1px; }
   .stepper{ display:flex; align-items:center; gap:3px; }
@@ -374,6 +384,13 @@
       font-family:var(--mono); font-size:10px; color:var(--text-faint);
       text-transform:uppercase; letter-spacing:0.6px; padding:0 4px;
     }
+    .rail-title-row{ display:flex; align-items:center; justify-content:space-between; padding:0 4px; }
+    .rail-title-row .rail-title{ padding:0; }
+    .rail-refresh-btn{
+      background:transparent; border:1px solid var(--border); color:var(--text-faint);
+      font-size:11px; width:18px; height:18px; padding:0; border-radius:5px; cursor:pointer; line-height:1;
+    }
+    .rail-refresh-btn:hover{ color:var(--text); border-color:var(--text-dim); }
     .rail-list{ display:flex; flex-direction:column; gap:5px; }
     .rail-chip{
       background:var(--panel2); border:1px solid var(--border); color:var(--text-dim);
@@ -381,6 +398,7 @@
       cursor:pointer; text-align:left; width:100%;
     }
     .rail-chip.active{ background:var(--blue-deep); border-color:var(--blue); color:#fff; }
+    .rail-chip-sub{ display:flex; justify-content:space-between; font-size:9.5px; margin-top:2px; opacity:0.85; }
     .rail-empty{ font-family:var(--mono); font-size:10px; color:var(--text-faint); padding:2px 4px; line-height:1.4; }
 
     .rail-symbol{ display:flex; flex-direction:column; gap:6px; margin-bottom:2px; }
@@ -458,11 +476,17 @@
       </div>
     </div>
 
-    <div class="rail-title" style="margin-top:8px;">Watchlist</div>
+    <div class="rail-title-row" style="margin-top:8px;">
+      <div class="rail-title">Watchlist</div>
+      <button type="button" class="rail-refresh-btn" id="railSummaryRefreshBtn" title="Load live summary for each watchlist symbol">↻</button>
+    </div>
     <div class="rail-list" id="railList"></div>
 
     <div class="rail-title" style="margin-top:14px;">Macro</div>
     <div class="rail-macro-grid" id="macroRailGrid"><div class="rail-empty">Tap "Load Macro" above.</div></div>
+
+    <div class="rail-title" style="margin-top:14px;">Live Levels</div>
+    <div class="rail-macro-grid" id="liveLevelsRailGrid"><div class="rail-empty">Tap "Load Live Levels" above.</div></div>
 
     <div class="rail-footer" id="railFooter"></div>
   </div>
@@ -509,6 +533,7 @@
       <button class="toggle small" id="liveDiffBtn">Diff: Off</button>
       <button class="small" id="loadNarrativeBtn">Load Narrative</button>
       <button class="small" id="loadMacroBtn">Load Macro</button>
+      <button class="small" id="loadLiveLevelsBtn">Load Live Levels</button>
     </div>
 
     <div class="budget-readout" id="budgetReadout">req today: 0/2400</div>
@@ -542,6 +567,8 @@
 
 <div class="zero-data-notice" id="zeroDataNotice" style="display:none;"></div>
 
+<div class="dealer-risk-banner" id="dealerRiskBanner" style="display:none;"></div>
+
 <div class="grid-wrap" id="gridWrap">
   <div class="empty-state">
     <div class="big">No data loaded yet</div>
@@ -565,6 +592,9 @@
     <span>· <span style="color:var(--indigo)">⇄</span> Reversal = per-expiration: heaviest opposite-sign strike within that same column vs its own MVC</span>
     <span>· <span style="color:var(--amber)">⚡</span> Hot = 0DTE (or next expiry) strike where live flow-GEX has diverged most from this morning's settled GEX (tap "Load Hot")</span>
     <span>· "Diff: On" recolors the whole grid by live-vs-settled GEX divergence per cell (Δ value shown) instead of raw GEX — dimmed cells have no diff data loaded for that column yet</span>
+    <span>· Dealer Risk banner (appears when Diff is on) = FlashAlpha's own settled-vs-live GEX/DEX delta + direction verdict for the whole symbol</span>
+    <span>· "Load Live Levels" = live-recalculated Flip/Call Wall/Put Wall/Max Pain on effective OI, shown in the rail with a vs-settled % badge</span>
+    <span>· Rail watchlist ↻ = live direction + % shift per pinned symbol, one tap to refresh all</span>
     <span>· <span style="color:var(--lime)">⊕</span> Magnet = 0DTE pin target into the close (only in 0DTE mode)</span>
     <span>· <span style="color:var(--skyblue)">◆1x/1.5x/2x</span> = strike nearest that multiple of expected move from spot (tap "Load IV / EM")</span>
     <span>· gold OPEX badge = monthly options expiration (3rd Friday)</span>
@@ -628,6 +658,9 @@
     gexByExp: {},
     liveDiffOn: false,
     liveDiffByExp: {},
+    dealerRisk: null,
+    liveLevels: null,
+    watchlistSummaries: {},
     levels: null,
     pinRisk: null,
     pinRiskError: null,
@@ -711,12 +744,61 @@
     if(!list.length){
       rail.innerHTML = '<div class="rail-empty">No favorites yet — tap ☆ next to a ticker to pin it here.</div>';
     } else {
-      rail.innerHTML = list.map(t =>
-        `<button class="rail-chip${t === state.ticker ? ' active' : ''}" data-ticker="${t}">${t}</button>`
-      ).join('');
+      rail.innerHTML = list.map(t => {
+        const s = state.watchlistSummaries[t];
+        const subHtml = s
+          ? `<div class="rail-chip-sub"><span style="color:${s.color}">${escapeHtml(s.label)}</span><span>${s.pctText}</span></div>`
+          : '';
+        return `<button class="rail-chip${t === state.ticker ? ' active' : ''}" data-ticker="${t}"><div>${t}</div>${subHtml}</button>`;
+      }).join('');
       rail.querySelectorAll('.rail-chip').forEach(btn => {
         btn.addEventListener('click', () => selectTicker(btn.dataset.ticker));
       });
+    }
+  }
+
+  async function loadWatchlistSummaries(){
+    const list = loadWatchlist();
+    if(!list.length) return;
+    const btn = $('railSummaryRefreshBtn');
+    const origText = btn.textContent;
+    btn.textContent = '…';
+    btn.disabled = true;
+    try{
+      const results = await Promise.all(list.map(t =>
+        fa('/v1/flow/summary/' + encodeURIComponent(t))
+          .then(r => ({ticker: t, data: r}))
+          .catch(err => ({ticker: t, error: err.message}))
+      ));
+      let anySuccess = false;
+      results.forEach(r => {
+        if(!r.data) return;
+        // Field names not confirmed for this endpoint — try the documented shape
+        // (direction, intraday OI delta, live GEX, % shift) plus common variants.
+        const label = r.data.flow_direction ?? r.data.direction ?? r.data.label ?? r.data.regime;
+        const pctShift = toNum(r.data.pct_shift ?? r.data.shift_pct ?? r.data.oi_delta_pct ?? r.data.intraday_oi_delta_pct);
+        if(!label && pctShift == null) return;
+        anySuccess = true;
+        const labelColors = { amplifying: 'var(--orange)', regime_flip: 'var(--red)', dampening: 'var(--blue)', neutral: 'var(--text-faint)', no_flow: 'var(--text-faint)' };
+        const color = labelColors[String(label).toLowerCase()] || 'var(--skyblue)';
+        state.watchlistSummaries[r.ticker] = {
+          label: label ? String(label).replace(/_/g,' ') : '—',
+          pctText: pctShift != null ? (pctShift > 0 ? '+' : '') + pctShift.toFixed(1) + '%' : '',
+          color,
+        };
+      });
+      if(!anySuccess){
+        const sample = results.find(r => r.data);
+        const sampleKeys = sample ? Object.keys(sample.data).join(', ') : '(all requests failed)';
+        throw new Error('No recognizable fields (flow_direction/pct_shift) in any response. Sample keys: ' + sampleKeys);
+      }
+      renderWatchlist();
+      btn.textContent = origText;
+    }catch(err){
+      alert('Watchlist summary load failed: ' + err.message);
+      btn.textContent = origText;
+    }finally{
+      btn.disabled = false;
     }
   }
 
@@ -1150,6 +1232,7 @@
       state.liveDiffOn = false;
       btn.textContent = 'Diff: Off';
       btn.classList.remove('active');
+      $('dealerRiskBanner').style.display = 'none';
       render();
       return;
     }
@@ -1210,6 +1293,38 @@
       state.liveDiffOn = true;
       btn.textContent = 'Diff: On';
       btn.classList.add('active');
+
+      // Dealer-Risk: FlashAlpha's own settled-vs-live GEX/DEX delta + direction label for
+      // the whole symbol — an authoritative second opinion alongside the per-cell diff above,
+      // not a replacement for it (this endpoint doesn't appear to expose a per-strike
+      // breakdown, just the aggregate verdict). Best-effort: Diff mode still works without it.
+      try{
+        const dr = await fa('/v1/flow/dealer-risk/' + encodeURIComponent(state.ticker));
+        const gexDelta = dr.gex_delta ?? dr.net_gex_delta ?? dr.dealer_gex_delta ?? (dr.gex && dr.gex.delta);
+        const dexDelta = dr.dex_delta ?? dr.net_dex_delta ?? dr.dealer_dex_delta ?? (dr.dex && dr.dex.delta);
+        const label = dr.flow_direction ?? dr.label ?? dr.direction ?? dr.regime;
+        if(gexDelta == null && dexDelta == null && !label){
+          console.warn('[GEX] dealer-risk response had no recognized fields. Top-level keys:', Object.keys(dr).join(', '));
+          state.dealerRisk = null;
+          $('dealerRiskBanner').style.display = 'none';
+        } else {
+          state.dealerRisk = { gexDelta: gexDelta != null ? Number(gexDelta) : null, dexDelta: dexDelta != null ? Number(dexDelta) : null, label: label || null };
+          // flow_direction enum per FlashAlpha docs: no_flow, neutral, amplifying, dampening, regime_flip
+          const labelColors = { amplifying: 'var(--orange)', regime_flip: 'var(--red)', dampening: 'var(--blue)', neutral: 'var(--text-faint)', no_flow: 'var(--text-faint)' };
+          const pillColor = labelColors[String(label).toLowerCase()] || 'var(--skyblue)';
+          const parts = [];
+          if(label) parts.push(`<span class="direction-pill" style="background:${pillColor};color:#0a0d12">${escapeHtml(String(label).replace(/_/g,' '))}</span>`);
+          if(gexDelta != null) parts.push(`<span><span class="lbl">GEX Δ</span> ${fmtMoney(Number(gexDelta))}</span>`);
+          if(dexDelta != null) parts.push(`<span><span class="lbl">DEX Δ</span> ${fmtMoney(Number(dexDelta))}</span>`);
+          $('dealerRiskBanner').innerHTML = `<span class="lbl">Dealer Risk (settled → live)</span>` + parts.join('');
+          $('dealerRiskBanner').style.display = 'flex';
+        }
+      }catch(err){
+        console.warn('[GEX] dealer-risk fetch failed (non-critical):', err.message);
+        state.dealerRisk = null;
+        $('dealerRiskBanner').style.display = 'none';
+      }
+
       render();
     }catch(err){
       alert('Live Diff failed: ' + err.message);
@@ -1359,6 +1474,65 @@
       btn.textContent = 'Reload Macro';
     }catch(err){
       alert('Macro load failed: ' + err.message);
+      btn.textContent = origText;
+    }finally{
+      btn.disabled = false;
+    }
+  }
+
+  async function loadLiveLevels(){
+    if(!state.ticker) return;
+    const btn = $('loadLiveLevelsBtn');
+    const origText = btn.textContent;
+    btn.textContent = 'Loading…';
+    btn.disabled = true;
+    try{
+      const res = await fa('/v1/flow/levels/' + encodeURIComponent(state.ticker));
+      // Same field-shape assumption as the settled /v1/exposure/levels this app already
+      // reads (flat gamma_flip/call_wall/put_wall numbers, not nested {strike,gex} objects) —
+      // but handle both shapes defensively since this endpoint hasn't been confirmed before.
+      const unwrap = v => (v && typeof v === 'object' && 'strike' in v) ? v.strike : v;
+      const container = res.levels || res;
+      const liveFlip = toNum(unwrap(container.gamma_flip));
+      const liveCW = toNum(unwrap(container.call_wall));
+      const livePW = toNum(unwrap(container.put_wall));
+      const liveMaxPain = toNum(unwrap(container.max_pain ?? container.maxPain));
+
+      const found = [liveFlip, liveCW, livePW, liveMaxPain].some(v => v !== null);
+      if(!found){
+        throw new Error('No recognizable level fields (gamma_flip/call_wall/put_wall/max_pain). Keys: ' + Object.keys(container).join(', '));
+      }
+
+      // Settled values already loaded this snap, for a quick vs-settled comparison
+      const settledFlip = state.levels && state.levels.gamma_flip != null ? Number(state.levels.gamma_flip) : null;
+      const settledCW = state.levels && state.levels.call_wall != null ? Number(state.levels.call_wall) : null;
+      const settledPW = state.levels && state.levels.put_wall != null ? Number(state.levels.put_wall) : null;
+
+      const rows = [
+        ['Flip', liveFlip, settledFlip],
+        ['Call Wall', liveCW, settledCW],
+        ['Put Wall', livePW, settledPW],
+        ['Max Pain', liveMaxPain, null],
+      ];
+      state.liveLevels = { flip: liveFlip, callWall: liveCW, putWall: livePW, maxPain: liveMaxPain };
+
+      const railGrid = document.getElementById('liveLevelsRailGrid');
+      if(railGrid){
+        railGrid.innerHTML = rows.map(([lbl, live, settled]) => {
+          if(live == null) return `<div class="rail-macro-item"><span class="lbl">${lbl}</span><span class="v">—</span></div>`;
+          let moveTag = '';
+          if(settled != null && settled !== 0){
+            const pctMove = ((live - settled) / settled) * 100;
+            if(Math.abs(pctMove) >= 0.1){
+              moveTag = ` <span style="color:${pctMove > 0 ? 'var(--blue)' : 'var(--orange)'}; font-size:9px;">(${pctMove > 0 ? '+' : ''}${pctMove.toFixed(1)}% vs settled)</span>`;
+            }
+          }
+          return `<div class="rail-macro-item"><span class="lbl">${lbl}</span><span class="v">$${formatStrike(live)}${moveTag}</span></div>`;
+        }).join('');
+      }
+      btn.textContent = 'Reload Live Levels';
+    }catch(err){
+      alert('Live Levels load failed: ' + err.message);
       btn.textContent = origText;
     }finally{
       btn.disabled = false;
@@ -2056,6 +2230,8 @@
   $('liveDiffBtn').addEventListener('click', toggleLiveDiff);
   $('loadNarrativeBtn').addEventListener('click', loadNarrative);
   $('loadMacroBtn').addEventListener('click', loadMacro);
+  $('loadLiveLevelsBtn').addEventListener('click', loadLiveLevels);
+  $('railSummaryRefreshBtn').addEventListener('click', loadWatchlistSummaries);
   $('macroCloseBtn').addEventListener('click', () => {
     $('macroPanel').style.display = 'none';
   });
