@@ -1488,19 +1488,20 @@
     btn.disabled = true;
     try{
       const res = await fa('/v1/flow/levels/' + encodeURIComponent(state.ticker));
-      // Same field-shape assumption as the settled /v1/exposure/levels this app already
-      // reads (flat gamma_flip/call_wall/put_wall numbers, not nested {strike,gex} objects) —
-      // but handle both shapes defensively since this endpoint hasn't been confirmed before.
+      // Confirmed shape (from a live response): flat top-level fields, each prefixed with
+      // "live_" — live_gamma_flip, live_call_wall, live_put_wall, live_max_pain. Different
+      // from the settled /v1/exposure/levels endpoint's unprefixed names, which is why the
+      // first guess (reusing those names) came back empty.
       const unwrap = v => (v && typeof v === 'object' && 'strike' in v) ? v.strike : v;
       const container = res.levels || res;
-      const liveFlip = toNum(unwrap(container.gamma_flip));
-      const liveCW = toNum(unwrap(container.call_wall));
-      const livePW = toNum(unwrap(container.put_wall));
-      const liveMaxPain = toNum(unwrap(container.max_pain ?? container.maxPain));
+      const liveFlip = toNum(unwrap(container.live_gamma_flip ?? container.gamma_flip));
+      const liveCW = toNum(unwrap(container.live_call_wall ?? container.call_wall));
+      const livePW = toNum(unwrap(container.live_put_wall ?? container.put_wall));
+      const liveMaxPain = toNum(unwrap(container.live_max_pain ?? container.max_pain ?? container.maxPain));
 
       const found = [liveFlip, liveCW, livePW, liveMaxPain].some(v => v !== null);
       if(!found){
-        throw new Error('No recognizable level fields (gamma_flip/call_wall/put_wall/max_pain). Keys: ' + Object.keys(container).join(', '));
+        throw new Error('No recognizable level fields (live_gamma_flip/live_call_wall/live_put_wall/live_max_pain). Keys: ' + Object.keys(container).join(', '));
       }
 
       // Settled values already loaded this snap, for a quick vs-settled comparison
