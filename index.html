@@ -1400,7 +1400,11 @@
 
       const recognizedKeys = ['vix','vvix','skew','move','spx','vix_term_structure'];
       const keysPresent = recognizedKeys.filter(k => k in container);
-      const found = [vix, vvix, skew, move, spx, vix3m].some(v => v !== null);
+      // Check against what will actually be DISPLAYED (VIX/VVIX/SKEW/MOVE/SPX), not vix3m —
+      // vix3m is only ever used internally to help compute the Term label and never gets its
+      // own row, so a response where only vix3m happens to be non-null would previously pass
+      // this check and silently render a rail full of "—" with no error to explain why.
+      const found = [vix, vvix, skew, move, spx].some(v => v !== null);
       if(!found){
         if(keysPresent.length){
           // The field NAMES are right (confirmed present) but every value is null right
