@@ -523,6 +523,7 @@
       <button class="small" id="loadIvBtn">Load IV / EM</button>
       <button class="small" id="loadSurgeBtn">Load Hot</button>
       <button class="toggle small" id="liveDiffBtn">Diff: Off</button>
+      <button class="toggle small" id="dexModeBtn">DEX: Off</button>
       <button class="small" id="loadNarrativeBtn">Load Narrative</button>
       <button class="small" id="loadMacroBtn">Load Macro</button>
       <button class="small" id="loadLiveLevelsBtn">Load Live Levels</button>
@@ -561,6 +562,8 @@
 
 <div class="dealer-risk-banner" id="dealerRiskBanner" style="display:none;"></div>
 
+<div class="dealer-risk-banner" id="dexSummaryBanner" style="display:none;"></div>
+
 <div class="grid-wrap" id="gridWrap">
   <div class="empty-state">
     <div class="big">No data loaded yet</div>
@@ -587,6 +590,7 @@
     <span>· Dealer Risk banner (appears when Diff is on) = FlashAlpha's own settled-vs-live GEX/DEX delta + direction verdict for the whole symbol</span>
     <span>· "Load Live Levels" = live-recalculated Flip/Call Wall/Put Wall/Max Pain on effective OI, shown in the rail with a vs-settled % badge</span>
     <span>· Rail watchlist ↻ = live direction + % shift per pinned symbol, one tap to refresh all</span>
+    <span>· "DEX: On" repaints the grid by live dealer delta exposure (green = net long delta, red = net short delta) instead of gamma — mutually exclusive with Diff; the "Net GEX by strike" column on the right always stays GEX</span>
     <span>· <span style="color:var(--lime)">⊕</span> Magnet = 0DTE pin target into the close (only in 0DTE mode)</span>
     <span>· <span style="color:var(--skyblue)">◆1x/1.5x/2x</span> = strike nearest that multiple of expected move from spot (tap "Load IV / EM")</span>
     <span>· gold OPEX badge = monthly options expiration (3rd Friday)</span>
@@ -650,6 +654,8 @@
     gexByExp: {},
     liveDiffOn: false,
     liveDiffByExp: {},
+    dexModeOn: false,
+    dexByExp: {},
     dealerRisk: null,
     liveLevels: null,
     watchlistSummaries: {},
@@ -1232,6 +1238,14 @@
       alert('Load the grid first, then Live Diff.');
       return;
     }
+    // Diff and DEX both repaint the same grid cells — running both at once would mean every
+    // cell tries to show two different overlays. DEX auto-turns-off when Diff turns on.
+    if(state.dexModeOn){
+      state.dexModeOn = false;
+      $('dexModeBtn').textContent = 'DEX: Off';
+      $('dexModeBtn').classList.remove('active');
+      $('dexSummaryBanner').style.display = 'none';
+    }
     const origText = btn.textContent;
     btn.textContent = 'Loading…';
     btn.disabled = true;
@@ -1326,6 +1340,104 @@
     }
   }
 
+  function dexColor(value, maxAbs){
+    // Deliberately green/red, not GEX's blue/orange — a different metric (dealer directional
+    // delta positioning, not gamma) should never look visually interchangeable with GEX.
+    if(!maxAbs || maxAbs <= 0) return 'rgba(255,255,255,0.03)';
+    const t = Math.min(Math.abs(value) / maxAbs, 1);
+    const eased = Math.pow(t, 0.75);
+    if(value >= 0){
+      return `rgba(53,212,136,${(0.05 + eased*0.80).toFixed(3)})`;
+    }
+    return `rgba(255,84,112,${(0.05 + eased*0.80).toFixed(3)})`;
+  }
+
+  async function toggleDexMode(){
+    const btn = $('dexModeBtn');
+    if(state.dexModeOn){
+      // Turning off costs nothing — keep the fetched data cached in case it's turned back on.
+      state.dexModeOn = false;
+      btn.textContent = 'DEX: Off';
+      btn.classList.remove('active');
+      $('dexSummaryBanner').style.display = 'none';
+      render();
+      return;
+    }
+    if(!state.ticker || !state.selectedExpirations.length){
+      alert('Load the grid first, then DEX mode.');
+      return;
+    }
+    // Diff and DEX both repaint the same grid cells — running both at once would mean every
+    // cell tries to show two different overlays. Diff auto-turns-off when DEX turns on.
+    if(state.liveDiffOn){
+      state.liveDiffOn = false;
+      $('liveDiffBtn').textContent = 'Diff: Off';
+      $('liveDiffBtn').classList.remove('active');
+      $('dealerRiskBanner').style.display = 'none';
+    }
+    const origText = btn.textContent;
+    btn.textContent = 'Loading…';
+    btn.disabled = true;
+    try{
+      // One live flow-DEX call per currently visible column — same per-column fetch pattern
+      // as Diff mode. Field names here mirror the confirmed /v1/flow/gex shape (top-level
+      // scalar fields prefixed "live_", but the strikes[] array keeps plain field names —
+      // net_dex per strike, not live_net_dex) since FlashAlpha's docs show that exact pattern
+      // for the sibling GEX endpoint and DEX has never been confirmed live before.
+      const results = await Promise.all(state.selectedExpirations.map(e =>
+        fa('/v1/flow/dex/' + encodeURIComponent(state.ticker) + '?expiration=' + e)
+          .then(r => ({exp: e, data: r}))
+          .catch(err => ({exp: e, error: err.message}))
+      ));
+
+      const anySuccess = results.some(r => r.data);
+      if(!anySuccess){
+        const firstErr = results.find(r => r.error);
+        throw new Error('All requests failed. ' + (firstErr ? firstErr.error : ''));
+      }
+
+      const dexByExp = {};
+      let anyVal = false;
+      let totalDex = 0;
+      results.forEach(r => {
+        if(!r.data || !r.data.strikes) return;
+        const byStrike = {};
+        r.data.strikes.forEach(s => {
+          const dexVal = s.net_dex ?? s.dex ?? s.delta_exposure;
+          if(dexVal == null) return;
+          anyVal = true;
+          byStrike[s.strike] = Number(dexVal);
+          totalDex += Number(dexVal);
+        });
+        dexByExp[r.exp] = byStrike;
+      });
+
+      if(!anyVal){
+        const sample = results.find(r => r.data && r.data.strikes && r.data.strikes.length);
+        const sampleKeys = sample ? Object.keys(sample.data.strikes[0]).join(', ') : '(no sample available)';
+        throw new Error('No recognizable DEX field (net_dex/dex/delta_exposure) in any strike. Sample keys: ' + sampleKeys);
+      }
+
+      state.dexByExp = dexByExp;
+      state.dexModeOn = true;
+      btn.textContent = 'DEX: On';
+      btn.classList.add('active');
+
+      // Small aggregate summary — sum of everything just fetched, no extra API call needed.
+      const dexLabel = totalDex > 0 ? 'net long delta' : totalDex < 0 ? 'net short delta' : 'flat';
+      const dexColorLabel = totalDex > 0 ? 'var(--green)' : totalDex < 0 ? 'var(--red)' : 'var(--text-faint)';
+      $('dexSummaryBanner').innerHTML = `<span class="lbl">DEX (visible columns)</span><span style="color:${dexColorLabel}; font-weight:700;">${fmtMoney(totalDex)} · dealers ${dexLabel}</span>`;
+      $('dexSummaryBanner').style.display = 'flex';
+
+      render();
+    }catch(err){
+      alert('DEX mode failed: ' + err.message);
+      btn.textContent = origText;
+    }finally{
+      btn.disabled = false;
+    }
+  }
+
   // Confirmed from FlashAlpha's documented field taxonomy: the macro object's fields are
   // flat — vix, vvix, skew, spx, move, vix_3m, vix_term_slope — not nested under a
   // vix_term_structure.levels object like earlier guesses assumed. That mismatch is why
@@ -1392,7 +1504,11 @@
 
       const recognizedKeys = ['vix','vvix','skew','move','spx','vix_term_structure'];
       const keysPresent = recognizedKeys.filter(k => k in container);
-      const found = [vix, vvix, skew, move, spx, vix3m].some(v => v !== null);
+      // Check against what will actually be DISPLAYED (VIX/VVIX/SKEW/MOVE/SPX), not vix3m —
+      // vix3m is only ever used internally to help compute the Term label and never gets its
+      // own row, so a response where only vix3m happens to be non-null would previously pass
+      // this check and silently render a rail full of "—" with no error to explain why.
+      const found = [vix, vvix, skew, move, spx].some(v => v !== null);
       if(!found){
         if(keysPresent.length){
           // The field NAMES are right (confirmed present) but every value is null right
@@ -1480,19 +1596,20 @@
     btn.disabled = true;
     try{
       const res = await fa('/v1/flow/levels/' + encodeURIComponent(state.ticker));
-      // Same field-shape assumption as the settled /v1/exposure/levels this app already
-      // reads (flat gamma_flip/call_wall/put_wall numbers, not nested {strike,gex} objects) —
-      // but handle both shapes defensively since this endpoint hasn't been confirmed before.
+      // Confirmed shape (from a live response): flat top-level fields, each prefixed with
+      // "live_" — live_gamma_flip, live_call_wall, live_put_wall, live_max_pain. Different
+      // from the settled /v1/exposure/levels endpoint's unprefixed names, which is why the
+      // first guess (reusing those names) came back empty.
       const unwrap = v => (v && typeof v === 'object' && 'strike' in v) ? v.strike : v;
       const container = res.levels || res;
-      const liveFlip = toNum(unwrap(container.gamma_flip));
-      const liveCW = toNum(unwrap(container.call_wall));
-      const livePW = toNum(unwrap(container.put_wall));
-      const liveMaxPain = toNum(unwrap(container.max_pain ?? container.maxPain));
+      const liveFlip = toNum(unwrap(container.live_gamma_flip ?? container.gamma_flip));
+      const liveCW = toNum(unwrap(container.live_call_wall ?? container.call_wall));
+      const livePW = toNum(unwrap(container.live_put_wall ?? container.put_wall));
+      const liveMaxPain = toNum(unwrap(container.live_max_pain ?? container.max_pain ?? container.maxPain));
 
       const found = [liveFlip, liveCW, livePW, liveMaxPain].some(v => v !== null);
       if(!found){
-        throw new Error('No recognizable level fields (gamma_flip/call_wall/put_wall/max_pain). Keys: ' + Object.keys(container).join(', '));
+        throw new Error('No recognizable level fields (live_gamma_flip/live_call_wall/live_put_wall/live_max_pain). Keys: ' + Object.keys(container).join(', '));
       }
 
       // Settled values already loaded this snap, for a quick vs-settled comparison
@@ -1832,6 +1949,18 @@
       }));
       maxAbsDelta = percentile(visibleDeltas, 0.92) || 1;
     }
+
+    // Same percentile-scaling pattern for DEX mode's own value range — dealer delta exposure
+    // sits on a completely different scale than gamma exposure, so it needs its own max.
+    let maxAbsDex = 1;
+    if(state.dexModeOn){
+      const visibleDex = [];
+      strikes.forEach(st => exps.forEach(e => {
+        const byStrike = state.dexByExp[e];
+        if(byStrike && byStrike[st] !== undefined) visibleDex.push(Math.abs(byStrike[st]));
+      }));
+      maxAbsDex = percentile(visibleDex, 0.92) || 1;
+    }
     const strikeBaseline = getOrSetStrikeBaseline(netByStrike);
 
     // Biggest Building / Fading strike (largest positive / negative % change vs first snapshot today)
@@ -2045,24 +2174,39 @@
         if(!c){
           html += `<td class="empty">—</td>`;
         } else {
-          const byStrike = state.liveDiffOn ? state.liveDiffByExp[e] : null;
-          const hasDelta = byStrike && byStrike[strike] !== undefined;
-          const delta = hasDelta ? byStrike[strike] : null;
-          // In Diff mode: color and primary value come from live-vs-settled divergence.
-          // Cells with no diff data yet (column wasn't loaded when Diff was toggled on)
-          // fall back to showing raw GEX, dimmed, so the grid doesn't show blank gaps.
-          const bg = (state.liveDiffOn && hasDelta) ? gexColor(delta, maxAbsDelta) : gexColor(c.net_gex || 0, maxAbs);
-          const isMvcCell = expMeta[e].mvcStrike === strike;
-          const isReversalCell = expMeta[e].reversalStrike === strike;
-          const isBump2Cell = bump2Exp === e && bump2Strike === strike;
+          const diffByStrike = state.liveDiffOn ? state.liveDiffByExp[e] : null;
+          const hasDelta = diffByStrike && diffByStrike[strike] !== undefined;
+          const delta = hasDelta ? diffByStrike[strike] : null;
+          const dexByStrike = state.dexModeOn ? state.dexByExp[e] : null;
+          const hasDex = dexByStrike && dexByStrike[strike] !== undefined;
+          const dexVal = hasDex ? dexByStrike[strike] : null;
+
+          let bg, mainVal, cellCls, reversalTagHtml, bump2TagHtml;
+          if(state.dexModeOn){
+            // DEX mode is a different metric entirely (dealer directional delta, not gamma) —
+            // GEX-specific markers (MVC/Reversal/Bump2) are suppressed here since highlighting
+            // a "biggest GEX" cell while showing DEX values would be genuinely misleading.
+            bg = hasDex ? dexColor(dexVal, maxAbsDex) : gexColor(c.net_gex || 0, maxAbs);
+            mainVal = hasDex ? `<span class="diff-val">${fmtMoney(dexVal)}</span>` : fmtMoney(c.net_gex);
+            cellCls = !hasDex ? 'diff-stale-cell' : '';
+            reversalTagHtml = ''; bump2TagHtml = '';
+          } else {
+            // In Diff mode: color and primary value come from live-vs-settled divergence.
+            // Cells with no diff data yet (column wasn't loaded when Diff was toggled on)
+            // fall back to showing raw GEX, dimmed, so the grid doesn't show blank gaps.
+            bg = (state.liveDiffOn && hasDelta) ? gexColor(delta, maxAbsDelta) : gexColor(c.net_gex || 0, maxAbs);
+            const isMvcCell = expMeta[e].mvcStrike === strike;
+            const isReversalCell = expMeta[e].reversalStrike === strike;
+            const isBump2Cell = bump2Exp === e && bump2Strike === strike;
+            cellCls = [isMvcCell ? 'mvc-cell' : '', isReversalCell ? 'reversal-cell' : '', isBump2Cell ? 'bump2-cell' : '', (state.liveDiffOn && !hasDelta) ? 'diff-stale-cell' : ''].filter(Boolean).join(' ');
+            reversalTagHtml = isReversalCell ? '<span class="reversal-cell-tag" title="Reversal — heaviest opposite-sign strike in this expiration">⇄</span>' : '';
+            bump2TagHtml = isBump2Cell ? '<span class="bump2-cell-tag" title="Bump2 — heaviest GEX strike between spot and MVC, today only">‖</span>' : '';
+            mainVal = (state.liveDiffOn && hasDelta)
+              ? `<span class="diff-val" title="Live flow-GEX minus this morning's settled GEX">Δ${fmtMoney(delta)}</span>`
+              : fmtMoney(c.net_gex);
+          }
           const oiChange = (c.call_oi_change || 0) + (c.put_oi_change || 0);
           const arrow = oiChange > 0 ? '<span class="oi-up">▲</span>' : (oiChange < 0 ? '<span class="oi-down">▼</span>' : '');
-          const cellCls = [isMvcCell ? 'mvc-cell' : '', isReversalCell ? 'reversal-cell' : '', isBump2Cell ? 'bump2-cell' : '', (state.liveDiffOn && !hasDelta) ? 'diff-stale-cell' : ''].filter(Boolean).join(' ');
-          const reversalTagHtml = isReversalCell ? '<span class="reversal-cell-tag" title="Reversal — heaviest opposite-sign strike in this expiration">⇄</span>' : '';
-          const bump2TagHtml = isBump2Cell ? '<span class="bump2-cell-tag" title="Bump2 — heaviest GEX strike between spot and MVC, today only">‖</span>' : '';
-          const mainVal = (state.liveDiffOn && hasDelta)
-            ? `<span class="diff-val" title="Live flow-GEX minus this morning's settled GEX">Δ${fmtMoney(delta)}</span>`
-            : fmtMoney(c.net_gex);
           html += `<td class="${cellCls}" style="background:${bg}" data-strike="${strike}" data-exp="${e}"><div class="cellval">${reversalTagHtml}${bump2TagHtml}${mainVal}${arrow}</div></td>`;
         }
       });
@@ -2220,6 +2364,7 @@
   $('loadIvBtn').addEventListener('click', loadIv);
   $('loadSurgeBtn').addEventListener('click', loadSurge);
   $('liveDiffBtn').addEventListener('click', toggleLiveDiff);
+  $('dexModeBtn').addEventListener('click', toggleDexMode);
   $('loadNarrativeBtn').addEventListener('click', loadNarrative);
   $('loadMacroBtn').addEventListener('click', loadMacro);
   $('loadLiveLevelsBtn').addEventListener('click', loadLiveLevels);
