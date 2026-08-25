@@ -180,6 +180,8 @@
     padding:8px 14px; flex-shrink:0;
   }
   .dealer-risk-banner .lbl{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.4px; }
+  .freshness-note{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); align-self:center; }
+  .freshness-note.stale{ color:var(--orange); }
   .dealer-risk-banner .direction-pill{
     font-family:var(--mono); font-weight:700; font-size:10.5px; padding:2px 8px; border-radius:8px;
   }
@@ -498,6 +500,7 @@
       <span class="mark">Γ MATRIX</span>
       <span class="status-dot" id="statusDot"></span>
       <span class="mini-clock" id="lastUpdated">—</span>
+      <span class="freshness-note" id="chainFreshnessNote" style="display:none;"></span>
       <button type="button" class="small mini" id="apiKeyBtn">API Key</button>
       <div class="metric"><div class="lbl">Net GEX</div><div class="v" id="mNetGex">—</div><div class="sub" id="mNetGexChip"></div></div>
       <div class="metric"><div class="lbl">Building</div><div class="v pos" id="mBuildStrike">—</div></div>
@@ -532,6 +535,7 @@
       <button class="small" id="loadSurgeBtn">Load Hot</button>
       <button class="toggle small" id="liveDiffBtn">Diff: Off</button>
       <button class="toggle small" id="dexModeBtn">DEX: Off</button>
+      <span class="freshness-note" id="flowFreshnessNote" style="display:none;"></span>
       <button class="small" id="loadNarrativeBtn">Load Narrative</button>
       <button class="small" id="loadMacroBtn">Load Macro</button>
       <button class="small" id="loadLiveLevelsBtn">Load Live Levels</button>
@@ -599,6 +603,7 @@
     <span>· "Load Live Levels" = live-recalculated Flip/Call Wall/Put Wall/Max Pain on effective OI, shown in the rail with a vs-settled % badge</span>
     <span>· Rail watchlist ↻ = live direction + % shift per pinned symbol, one tap to refresh all</span>
     <span>· "DEX: On" repaints the grid by live dealer delta exposure (green = net long delta, red = net short delta) instead of gamma — mutually exclusive with Diff; the "Net GEX by strike" column on the right always stays GEX</span>
+    <span>· "chain: Xs ago" / "flow: Xs ago" = real per-feed freshness from FlashAlpha (turns orange past 2min stale) — chain shows next to the snap clock, flow shows next to Diff/DEX when either is on</span>
     <span>· <span style="color:var(--lime)">⊕</span> Magnet = 0DTE pin target into the close (only in 0DTE mode)</span>
     <span>· <span style="color:var(--skyblue)">◆1x/1.5x/2x</span> = strike nearest that multiple of expected move from spot (tap "Load IV / EM")</span>
     <span>· gold OPEX badge = monthly options expiration (3rd Friday)</span>
@@ -663,6 +668,7 @@
     liveDiffOn: false,
     liveDiffByExp: {},
     dexModeOn: false,
+    freshness: { node: null, equity_feed: null, equity_options_feed: null, index_feed: null, index_options_feed: null, futures_feed: null, flow_feed: null, oi_feed: null, macro_feed: null },
     dexByExp: {},
     dealerRisk: null,
     liveLevels: null,
@@ -868,10 +874,40 @@
         }
         throw new Error(res.status + ' ' + res.statusText + ' on ' + path);
       }
-      return await res.json();
+      const json = await res.json();
+      // New response envelope field: data_as_of, present on every response, gives per-feed
+      // freshness (each feed fails/updates independently — options data can be current while
+      // spot is frozen, or vice versa). Merge non-null values in so a later call that happens
+      // to omit/null a feed doesn't wipe out a good timestamp we already captured for it.
+      if(json && typeof json.data_as_of === 'object' && json.data_as_of){
+        Object.entries(json.data_as_of).forEach(([k, v]) => {
+          if(v != null) state.freshness[k] = v;
+        });
+      }
+      return json;
     } finally {
       clearTimeout(t);
     }
+  }
+
+  // Human-readable "how long ago" for an ISO timestamp — under a minute in seconds, under an
+  // hour in minutes, under a day in hours, otherwise a short date so a stale weekend/holiday
+  // timestamp reads as a real date rather than a nonsensical "2000 minutes ago".
+  function formatFreshness(iso){
+    if(!iso) return null;
+    const then = new Date(iso).getTime();
+    if(Number.isNaN(then)) return null;
+    const diffMs = Date.now() - then;
+    const diffSec = Math.round(diffMs / 1000);
+    if(diffSec < 0) return 'just now';
+    if(diffSec < 60) return diffSec + 's ago';
+    const diffMin = Math.round(diffSec / 60);
+    if(diffMin < 60) return diffMin + 'm ago';
+    const diffHr = Math.round(diffMin / 60);
+    if(diffHr < 24) return diffHr + 'h ago';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' }) +
+      ', ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   }
 
   async function loadAccountQuota(){
@@ -1056,12 +1092,15 @@
       return;
     }
     const sampleKeys = Object.keys(allStrikes[0]).join(', ');
-    const isWeekend = [0, 6].includes(new Date().getDay());
+    // Previously guessed "probably a closed weekend" from the day of the week — now uses the
+    // real equity/index_options_feed timestamp from data_as_of instead of guessing.
+    const chainIso = state.freshness.equity_options_feed || state.freshness.index_options_feed;
+    const chainFreshLabel = formatFreshness(chainIso);
     notice.innerHTML =
       `<span>Every strike came back with $0 GEX across ${Object.keys(byExp).length} expiration(s).` +
-      (isWeekend
-        ? ` It's the weekend — this is most likely stale/no-data from a closed market, not a bug. Re-check during trading hours.`
-        : ` Markets should be open — this looks like a field-name mismatch. Sample strike keys: ${escapeHtml(sampleKeys)}.`) +
+      (chainFreshLabel
+        ? ` The options chain feed was last updated ${chainFreshLabel} — if that's stale, this is a closed-market gap, not a bug. If it's recent, this looks like a field-name mismatch. Sample strike keys: ${escapeHtml(sampleKeys)}.`
+        : ` No chain freshness timestamp available yet. Sample strike keys: ${escapeHtml(sampleKeys)}.`) +
       `</span><button id="zeroDataDismiss" title="Dismiss">✕</button>`;
     notice.style.display = 'flex';
     $('zeroDataDismiss').addEventListener('click', hideZeroDataNotice);
@@ -1130,6 +1169,7 @@
 
       state.lastSnap = Date.now();
       lastUpdatedEl.textContent = new Date().toLocaleTimeString();
+      updateChainFreshnessNote();
       setStatus('live');
       render();
     }catch(err){
@@ -1230,6 +1270,43 @@
     }
   }
 
+  function updateChainFreshnessNote(){
+    const el = $('chainFreshnessNote');
+    if(!el) return;
+    // Prefer equity_options_feed; fall back to index_options_feed for index tickers (SPX etc.)
+    // where the equity feed legitimately stays null per the docs — either one describes the
+    // same thing we actually care about: how fresh is the options chain the grid is built from.
+    const iso = state.freshness.equity_options_feed || state.freshness.index_options_feed;
+    const label = formatFreshness(iso);
+    if(!label){
+      el.style.display = 'none';
+      return;
+    }
+    const ageSec = (Date.now() - new Date(iso).getTime()) / 1000;
+    el.textContent = 'chain: ' + label;
+    el.classList.toggle('stale', ageSec > 120);
+    el.style.display = 'inline';
+  }
+
+  function updateFlowFreshnessNote(){
+    const el = $('flowFreshnessNote');
+    if(!el) return;
+    if(!state.liveDiffOn && !state.dexModeOn){
+      el.style.display = 'none';
+      return;
+    }
+    const iso = state.freshness.flow_feed;
+    const label = formatFreshness(iso);
+    if(!label){
+      el.style.display = 'none';
+      return;
+    }
+    const ageSec = (Date.now() - new Date(iso).getTime()) / 1000;
+    el.textContent = 'flow: ' + label;
+    el.classList.toggle('stale', ageSec > 120);
+    el.style.display = 'inline';
+  }
+
   async function toggleLiveDiff(){
     const btn = $('liveDiffBtn');
     if(state.liveDiffOn){
@@ -1239,6 +1316,7 @@
       btn.textContent = 'Diff: Off';
       btn.classList.remove('active');
       $('dealerRiskBanner').style.display = 'none';
+      updateFlowFreshnessNote();
       render();
       return;
     }
@@ -1307,6 +1385,7 @@
       state.liveDiffOn = true;
       btn.textContent = 'Diff: On';
       btn.classList.add('active');
+      updateFlowFreshnessNote();
 
       // Dealer-Risk: FlashAlpha's own settled-vs-live GEX/DEX delta + direction label for
       // the whole symbol — an authoritative second opinion alongside the per-cell diff above,
@@ -1368,6 +1447,7 @@
       btn.textContent = 'DEX: Off';
       btn.classList.remove('active');
       $('dexSummaryBanner').style.display = 'none';
+      updateFlowFreshnessNote();
       render();
       return;
     }
@@ -1430,6 +1510,7 @@
       state.dexModeOn = true;
       btn.textContent = 'DEX: On';
       btn.classList.add('active');
+      updateFlowFreshnessNote();
 
       // Small aggregate summary — sum of everything just fetched, no extra API call needed.
       const dexLabel = totalDex > 0 ? 'net long delta' : totalDex < 0 ? 'net short delta' : 'flat';
@@ -1520,10 +1601,11 @@
       if(!found){
         if(keysPresent.length){
           // The field NAMES are right (confirmed present) but every value is null right
-          // now — almost certainly a closed-market gap rather than a mapping bug.
-          const isWeekend = [0, 6].includes(new Date().getDay());
+          // now. Previously this had to guess "probably a closed weekend" — now data_as_of
+          // gives the real answer: exactly when macro_feed last updated, no guessing needed.
+          const macroFreshLabel = formatFreshness(state.freshness.macro_feed);
           throw new Error('Macro fields (' + keysPresent.join(', ') + ') are present but all null right now' +
-            (isWeekend ? ' — markets are closed (weekend), so FlashAlpha likely has no fresh macro snapshot yet.' : '. Try again during trading hours, or this may be a temporary gap on FlashAlpha\'s side.'));
+            (macroFreshLabel ? ' — macro data was last updated ' + macroFreshLabel + '.' : ' — no macro freshness timestamp available yet either.'));
         }
         const topKeys = Object.keys(res).join(', ');
         const macroKeys = (container !== res) ? Object.keys(container).join(', ') : '(no separate macro/market container found)';
@@ -1582,9 +1664,11 @@
       ).join('');
       const railGrid = document.getElementById('macroRailGrid');
       if(railGrid){
+        const macroFreshLabel = formatFreshness(state.freshness.macro_feed);
+        const freshHtml = macroFreshLabel ? `<div class="rail-macro-item" style="opacity:0.65;"><span class="lbl">as of</span><span class="v" style="font-weight:400;">${macroFreshLabel}</span></div>` : '';
         railGrid.innerHTML = rowsHtml.map(([lbl,v]) =>
           `<div class="rail-macro-item"><span class="lbl">${lbl}</span><span class="v">${v}</span></div>`
-        ).join('');
+        ).join('') + freshHtml;
       }
       $('macroPanel').style.display = 'flex';
       btn.textContent = 'Reload Macro';
