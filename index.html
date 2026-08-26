@@ -1553,6 +1553,16 @@
     if(typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) return Number(v);
     return null;
   }
+  // FlashAlpha's macro fields now arrive as {value, change, change_pct, as_of} objects rather
+  // than flat numbers (confirmed from a live raw-value dump — the old flat shape is kept as a
+  // fallback in case an older response or a different endpoint still sends one). Returns
+  // {value, changePct} so callers get both the level and today's move in one place.
+  function unwrapMacroField(raw){
+    if(raw && typeof raw === 'object' && 'value' in raw){
+      return { value: toNum(raw.value), changePct: toNum(raw.change_pct ?? raw.changePct) };
+    }
+    return { value: toNum(raw), changePct: null };
+  }
 
   async function loadMacro(){
     if(!state.ticker) return;
@@ -1564,13 +1574,14 @@
       const res = await fa('/v1/stock/' + encodeURIComponent(state.ticker) + '/summary');
       const container = res.macro || res.macro_context || res.market || res.market_context || res.context || res;
 
-      const vix   = toNum(pickField(container, MACRO_FIELD_ALIASES.vix));
-      const vvix  = toNum(pickField(container, MACRO_FIELD_ALIASES.vvix));
-      const skew  = toNum(pickField(container, MACRO_FIELD_ALIASES.skew));
-      const move  = toNum(pickField(container, MACRO_FIELD_ALIASES.move));
-      const spx   = toNum(pickField(container, MACRO_FIELD_ALIASES.spx));
-      let vix3m = toNum(pickField(container, MACRO_FIELD_ALIASES.vix3m));
-      const slope = toNum(pickField(container, MACRO_FIELD_ALIASES.slope));
+      const vixField  = unwrapMacroField(pickField(container, MACRO_FIELD_ALIASES.vix));
+      const vvixField = unwrapMacroField(pickField(container, MACRO_FIELD_ALIASES.vvix));
+      const skewField = unwrapMacroField(pickField(container, MACRO_FIELD_ALIASES.skew));
+      const moveField = unwrapMacroField(pickField(container, MACRO_FIELD_ALIASES.move));
+      const spxField  = unwrapMacroField(pickField(container, MACRO_FIELD_ALIASES.spx));
+      const vix = vixField.value, vvix = vvixField.value, skew = skewField.value, move = moveField.value, spx = spxField.value;
+      let vix3m = unwrapMacroField(pickField(container, MACRO_FIELD_ALIASES.vix3m)).value;
+      const slope = unwrapMacroField(pickField(container, MACRO_FIELD_ALIASES.slope)).value;
 
       // vix_3m isn't its own top-level field — the confirmed container key is
       // vix_term_structure (nested object), so pull vix3m/slope from there if present.
@@ -1620,12 +1631,12 @@
       }
 
       const items = [
-        ['VIX',  vix  != null ? vix.toFixed(2)  : '—'],
-        ['VVIX', vvix != null ? vvix.toFixed(2) : '—'],
-        ['SKEW', skew != null ? skew.toFixed(1) : '—'],
-        ['MOVE', move != null ? move.toFixed(2) : '—'],
-        ['SPX',  spx  != null ? spx.toLocaleString() : '—'],
-        ['Term', termLabel],
+        ['VIX',  vix  != null ? vix.toFixed(2)  : '—', vixField.changePct],
+        ['VVIX', vvix != null ? vvix.toFixed(2) : '—', vvixField.changePct],
+        ['SKEW', skew != null ? skew.toFixed(1) : '—', skewField.changePct],
+        ['MOVE', move != null ? move.toFixed(2) : '—', moveField.changePct],
+        ['SPX',  spx  != null ? spx.toLocaleString() : '—', spxField.changePct],
+        ['Term', termLabel, null],
       ];
 
       // Bonus fields — same response, no extra API cost. Field names here are best-effort
@@ -1663,9 +1674,16 @@
         }
       }
 
-      const rowsHtml = items.map(([lbl,v]) =>
-        [lbl, escapeHtml(String(v))]
-      );
+      const rowsHtml = items.map(([lbl, v, chgPct]) => {
+        const escaped = escapeHtml(String(v));
+        let badge = '';
+        if(chgPct != null && !Number.isNaN(chgPct)){
+          if(Math.abs(chgPct) < 0.05) badge = ' <span class="chg-flat" title="Flat today">ø</span>';
+          else if(chgPct > 0) badge = ` <span class="chg-up">▲${chgPct.toFixed(1)}%</span>`;
+          else badge = ` <span class="chg-down">▼${Math.abs(chgPct).toFixed(1)}%</span>`;
+        }
+        return [lbl, escaped + badge];
+      });
       $('macroGrid').innerHTML = rowsHtml.map(([lbl,v]) =>
         `<div class="macro-item"><div class="lbl">${lbl}</div><div class="v">${v}</div></div>`
       ).join('');
