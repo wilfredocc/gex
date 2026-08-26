@@ -1599,12 +1599,19 @@
       // this check and silently render a rail full of "—" with no error to explain why.
       const found = [vix, vvix, skew, move, spx].some(v => v !== null);
       if(!found){
+        // Show the RAW pre-parse values (not just "is it null"), since a response could send
+        // something toNum() doesn't recognize — an empty string, "N/A", 0 as a placeholder,
+        // a nested object — and that would look identical to a true null in the checks above.
+        // A future screenshot of this alert (or the console line) shows exactly what shape
+        // the API actually sent, instead of us having to guess again.
+        const rawDump = ['vix','vvix','skew','move','spx'].map(k => k + '=' + JSON.stringify(container[k])).join(', ');
+        console.warn('[GEX] Macro fields present but unparsed. Raw values:', rawDump, 'Full container:', container);
         if(keysPresent.length){
           // The field NAMES are right (confirmed present) but every value is null right
           // now. Previously this had to guess "probably a closed weekend" — now data_as_of
           // gives the real answer: exactly when macro_feed last updated, no guessing needed.
           const macroFreshLabel = formatFreshness(state.freshness.macro_feed);
-          throw new Error('Macro fields (' + keysPresent.join(', ') + ') are present but all null right now' +
+          throw new Error('Macro fields present but unparsed: ' + rawDump +
             (macroFreshLabel ? ' — macro data was last updated ' + macroFreshLabel + '.' : ' — no macro freshness timestamp available yet either.'));
         }
         const topKeys = Object.keys(res).join(', ');
