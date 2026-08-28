@@ -274,6 +274,14 @@
   td.bump2-cell{ outline:2px solid var(--magenta) !important; outline-offset:-2px; }
   .bump2-cell-tag{ color:var(--magenta); font-size:11px; margin-right:3px; }
 
+  /* Flux: only appears in Diff mode — an isolated flow-diff sign flip vs both neighbors,
+     the experimental "live pin-magnet" theory validated against SPY 7/27 strike 736.
+     Deliberately NOT called "Magnet" — that name is taken by FlashAlpha's own pin-risk
+     model target (⊕, lime); this is a different, unofficial signal we're testing ourselves.
+     Dashed outline (vs every other marker's solid outline) marks it as experimental. */
+  td.flux-cell{ outline:2px dashed var(--skyblue) !important; outline-offset:-2px; }
+  .flux-cell-tag{ color:var(--skyblue); font-size:11px; margin-right:3px; }
+
   tr.nie-row th.strike-cell{ border-left:3px solid var(--rose); }
   th.strike-cell .nie-tag{ color:var(--rose); font-size:14px; margin-left:3px; }
 
@@ -604,6 +612,7 @@
     <span>· Rail watchlist ↻ = live direction + % shift per pinned symbol, one tap to refresh all</span>
     <span>· "DEX: On" repaints the grid by live dealer delta exposure (green = net long delta, red = net short delta) instead of gamma — mutually exclusive with Diff; the "Net GEX by strike" column on the right always stays GEX</span>
     <span>· "chain: Xs ago" / "flow: Xs ago" = real per-feed freshness from FlashAlpha (turns orange past 2min stale) — chain shows next to the snap clock, flow shows next to Diff/DEX when either is on</span>
+    <span>· <span style="color:var(--skyblue)">✦</span> Flux (Diff mode only, dashed outline) = experimental: isolated live-diff sign flip vs both neighbors — a live "pin magnet" theory, validated once against SPY 7/27 strike 736, not an official FlashAlpha number</span>
     <span>· <span style="color:var(--lime)">⊕</span> Magnet = 0DTE pin target into the close (only in 0DTE mode)</span>
     <span>· <span style="color:var(--skyblue)">◆1x/1.5x/2x</span> = strike nearest that multiple of expected move from spot (tap "Load IV / EM")</span>
     <span>· gold OPEX badge = monthly options expiration (3rd Friday)</span>
@@ -2067,6 +2076,36 @@
       maxAbsDelta = percentile(visibleDeltas, 0.92) || 1;
     }
 
+    // Flux: a strike whose live-vs-settled delta sign is isolated — opposite BOTH its
+    // immediate neighbors, while those two neighbors agree with each other — surrounded by
+    // consistent flow in one direction while it alone moves the other way. Validated against
+    // real price action on SPY 7/27: strike 736 showed a standout positive delta while both
+    // neighbors were deeply negative, and price pinned right at 736 for hours afterward.
+    // Distinct from "Magnet" (⊕), which is FlashAlpha's own pin-risk-model pin target — Flux
+    // is a theory we're testing off live flow, not their official number.
+    const FLUX_MIN_FRACTION = 0.15; // filters out insignificant blips relative to this column's own scale
+    const fluxByExp = {};
+    if(state.liveDiffOn){
+      exps.forEach(e => {
+        const byStrike = state.liveDiffByExp[e];
+        if(!byStrike) return;
+        // Walk the visible strikes in the order they're already sorted, but only among
+        // strikes that actually have diff data for this column — skips void/missing gaps
+        // so "neighbor" means the next real value, not just the next row on screen.
+        const present = strikes.filter(s => byStrike[s] !== undefined);
+        const fluxSet = new Set();
+        for(let i = 1; i < present.length - 1; i++){
+          const cur = byStrike[present[i]], prev = byStrike[present[i-1]], next = byStrike[present[i+1]];
+          const sign = v => v < 0 ? -1 : (v > 0 ? 1 : 0);
+          if(sign(cur) === 0 || sign(prev) === 0 || sign(next) === 0) continue;
+          if(sign(cur) !== sign(prev) && sign(cur) !== sign(next) && sign(prev) === sign(next)){
+            if(Math.abs(cur) >= maxAbsDelta * FLUX_MIN_FRACTION) fluxSet.add(present[i]);
+          }
+        }
+        if(fluxSet.size) fluxByExp[e] = fluxSet;
+      });
+    }
+
     // Same percentile-scaling pattern for DEX mode's own value range — dealer delta exposure
     // sits on a completely different scale than gamma exposure, so it needs its own max.
     let maxAbsDex = 1;
@@ -2315,12 +2354,15 @@
             const isMvcCell = expMeta[e].mvcStrike === strike;
             const isReversalCell = expMeta[e].reversalStrike === strike;
             const isBump2Cell = bump2Exp === e && bump2Strike === strike;
-            cellCls = [isMvcCell ? 'mvc-cell' : '', isReversalCell ? 'reversal-cell' : '', isBump2Cell ? 'bump2-cell' : '', (state.liveDiffOn && !hasDelta) ? 'diff-stale-cell' : ''].filter(Boolean).join(' ');
+            const isFluxCell = state.liveDiffOn && fluxByExp[e] && fluxByExp[e].has(strike);
+            cellCls = [isMvcCell ? 'mvc-cell' : '', isReversalCell ? 'reversal-cell' : '', isBump2Cell ? 'bump2-cell' : '', isFluxCell ? 'flux-cell' : '', (state.liveDiffOn && !hasDelta) ? 'diff-stale-cell' : ''].filter(Boolean).join(' ');
             reversalTagHtml = isReversalCell ? '<span class="reversal-cell-tag" title="Reversal — heaviest opposite-sign strike in this expiration">⇄</span>' : '';
             bump2TagHtml = isBump2Cell ? '<span class="bump2-cell-tag" title="Bump2 — heaviest GEX strike between spot and MVC, today only">‖</span>' : '';
+            const fluxTagHtml = isFluxCell ? '<span class="flux-cell-tag" title="Flux — isolated flow-diff sign flip vs both neighbors, an experimental live pin-magnet signal">✦</span>' : '';
             mainVal = (state.liveDiffOn && hasDelta)
               ? `<span class="diff-val" title="Live flow-GEX minus this morning's settled GEX">Δ${fmtMoney(delta)}</span>`
               : fmtMoney(c.net_gex);
+            reversalTagHtml = reversalTagHtml + fluxTagHtml;
           }
           const oiChange = (c.call_oi_change || 0) + (c.put_oi_change || 0);
           const arrow = oiChange > 0 ? '<span class="oi-up">▲</span>' : (oiChange < 0 ? '<span class="oi-down">▼</span>' : '');
