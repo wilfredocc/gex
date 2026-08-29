@@ -182,6 +182,41 @@
   .dealer-risk-banner .lbl{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.4px; }
   .freshness-note{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); align-self:center; }
   .freshness-note.stale{ color:var(--orange); }
+
+  /* ---------- "Where GEX Sits" plain-English summary ---------- */
+  .gex-sits-banner{
+    display:none; flex-direction:column; gap:4px;
+    background:var(--panel); border-bottom:1px solid var(--border-soft);
+    padding:8px 14px; font-family:var(--mono); font-size:12px; flex-shrink:0;
+  }
+  .gex-sits-row{ display:flex; align-items:baseline; gap:8px; }
+  .gex-sits-desc{ color:var(--text-dim); font-family:var(--sans); }
+
+  /* ---------- Floor / Magnet / Flip / Ceiling number-line rail ---------- */
+  .level-rail-wrap{
+    display:none; background:var(--panel); border-bottom:1px solid var(--border-soft);
+    padding:22px 14px 26px; flex-shrink:0;
+  }
+  .rail-track{ position:relative; height:2px; background:var(--border); margin:0 4px; }
+  .rail-tick{ position:absolute; top:0; transform:translateX(-50%); text-align:center; }
+  .rail-tick::before{
+    content:''; position:absolute; top:-4px; left:50%; transform:translateX(-50%);
+    width:9px; height:9px; border-radius:50%; background:var(--tick-color);
+    box-shadow:0 0 0 3px var(--panel);
+  }
+  .rail-tick-label{
+    position:absolute; top:-24px; left:50%; transform:translateX(-50%);
+    font-family:var(--mono); font-size:9px; color:var(--tick-color); white-space:nowrap; text-transform:uppercase; letter-spacing:0.4px;
+  }
+  .rail-tick-val{
+    position:absolute; top:12px; left:50%; transform:translateX(-50%);
+    font-family:var(--mono); font-size:10.5px; font-weight:700; color:var(--text); white-space:nowrap;
+  }
+  .rail-spot{
+    position:absolute; top:50%; transform:translate(-50%, -50%);
+    width:11px; height:11px; border-radius:50%; background:#fff;
+    box-shadow:0 0 0 3px var(--panel), 0 0 8px rgba(255,255,255,0.6); z-index:2;
+  }
   .dealer-risk-banner .direction-pill{
     font-family:var(--mono); font-weight:700; font-size:10.5px; padding:2px 8px; border-radius:8px;
   }
@@ -584,6 +619,9 @@
 
 <div class="dealer-risk-banner" id="dexSummaryBanner" style="display:none;"></div>
 
+<div class="gex-sits-banner" id="gexSitsBanner" style="display:none;"></div>
+<div class="level-rail-wrap" id="levelRailBar" style="display:none;"></div>
+
 <div class="grid-wrap" id="gridWrap">
   <div class="empty-state">
     <div class="big">No data loaded yet</div>
@@ -613,6 +651,7 @@
     <span>· "DEX: On" repaints the grid by live dealer delta exposure (green = net long delta, red = net short delta) instead of gamma — mutually exclusive with Diff; the "Net GEX by strike" column on the right always stays GEX</span>
     <span>· "chain: Xs ago" / "flow: Xs ago" = real per-feed freshness from FlashAlpha (turns orange past 2min stale) — chain shows next to the snap clock, flow shows next to Diff/DEX when either is on</span>
     <span>· <span style="color:var(--skyblue)">✦</span> Flux (Diff mode only, dashed outline) = experimental: isolated live-diff sign flip vs both neighbors — a live "pin magnet" theory, validated once against SPY 7/27 strike 736, not an official FlashAlpha number</span>
+    <span>· "Where GEX Sits" (plain-English summary) and the Floor/Magnet/Flip/Ceiling rail both use today's expiration's own CW/PW/MVC/Flip — no new data, just read differently</span>
     <span>· <span style="color:var(--lime)">⊕</span> Magnet = 0DTE pin target into the close (only in 0DTE mode)</span>
     <span>· <span style="color:var(--skyblue)">◆1x/1.5x/2x</span> = strike nearest that multiple of expected move from spot (tap "Load IV / EM")</span>
     <span>· gold OPEX badge = monthly options expiration (3rd Friday)</span>
@@ -2282,6 +2321,55 @@
           }
         });
         if(bump2Strike != null) bump2Exp = todayExp;
+      }
+    }
+
+    // "Where GEX Sits" plain-English summary + Floor/Magnet/Flip/Ceiling rail — both built
+    // from today's (nearest) expiration's own CW/PW/MVC/Flip, already computed above with no
+    // extra fetch. Inspired by a similar panel on a Discord friend's terminal (Stratify.io).
+    {
+      const todayExp = state.selectedExpirations[0];
+      const meta = todayExp ? expMeta[todayExp] : null;
+      const gexSitsEl = $('gexSitsBanner');
+      const railEl = $('levelRailBar');
+      if(meta && state.spot != null && (meta.callWall != null || meta.putWall != null || meta.mvcStrike != null)){
+        const pctFrom = v => v != null ? ((v - state.spot) / state.spot * 100) : null;
+        const rows = [
+          meta.callWall != null ? { label: 'Ceiling', strike: meta.callWall, desc: 'resistance · sellers defend', color: 'var(--blue)', icon: '▲' } : null,
+          meta.putWall != null ? { label: 'Floor', strike: meta.putWall, desc: 'support · a break below can run', color: 'var(--orange)', icon: '▼' } : null,
+          meta.mvcStrike != null ? { label: 'Magnet', strike: meta.mvcStrike, desc: 'biggest position · pulls price toward it', color: 'var(--gold)', icon: '★' } : null,
+        ].filter(Boolean);
+        gexSitsEl.innerHTML = rows.map(r => {
+          const pct = pctFrom(r.strike);
+          const pctStr = pct != null ? ' <span style="color:var(--text-faint)">(' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%)</span>' : '';
+          return `<div class="gex-sits-row"><span style="color:${r.color}">${r.icon} ${formatStrike(r.strike)}</span> <span class="gex-sits-desc">${escapeHtml(r.desc)}</span>${pctStr}</div>`;
+        }).join('');
+        gexSitsEl.style.display = 'flex';
+
+        // Rail: position Floor/Magnet/Flip/Ceiling and spot proportionally along a number line.
+        const railPoints = [
+          meta.putWall != null ? { label: 'Floor', v: meta.putWall, color: 'var(--orange)' } : null,
+          meta.mvcStrike != null ? { label: '★ Magnet', v: meta.mvcStrike, color: 'var(--gold)' } : null,
+          meta.flipStrike != null ? { label: 'Flip', v: meta.flipStrike, color: 'var(--purple)' } : null,
+          meta.callWall != null ? { label: 'Ceiling', v: meta.callWall, color: 'var(--blue)' } : null,
+        ].filter(Boolean);
+        if(railPoints.length >= 2){
+          const allVals = railPoints.map(p => p.v).concat([state.spot]);
+          const lo = Math.min(...allVals), hi = Math.max(...allVals);
+          const span = (hi - lo) || 1;
+          const pad = 6; // percent margin so end labels don't clip off the edge
+          const posOf = v => pad + ((v - lo) / span) * (100 - pad * 2);
+          const ticksHtml = railPoints.map(p =>
+            `<div class="rail-tick" style="left:${posOf(p.v).toFixed(1)}%; --tick-color:${p.color}"><div class="rail-tick-label">${escapeHtml(p.label)}</div><div class="rail-tick-val">${formatStrike(p.v)}</div></div>`
+          ).join('');
+          railEl.innerHTML = `<div class="rail-track">${ticksHtml}<div class="rail-spot" style="left:${posOf(state.spot).toFixed(1)}%" title="Spot ${formatStrike(state.spot)}"></div></div>`;
+          railEl.style.display = 'block';
+        } else {
+          railEl.style.display = 'none';
+        }
+      } else {
+        gexSitsEl.style.display = 'none';
+        railEl.style.display = 'none';
       }
     }
 
