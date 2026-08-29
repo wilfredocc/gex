@@ -173,6 +173,15 @@
     background:transparent; border:1px solid var(--border); color:var(--text-dim);
     font-size:11px; width:22px; height:22px; padding:0; border-radius:6px; flex-shrink:0; cursor:pointer;
   }
+  .update-banner{
+    display:none; align-items:center; justify-content:center; gap:12px;
+    background:var(--green); color:#0a0d12; font-size:12px; font-weight:600;
+    padding:8px 14px; flex-shrink:0;
+  }
+  .update-banner button{
+    background:#0a0d12; color:var(--green); border:none; font-weight:700;
+    padding:4px 12px; border-radius:6px; cursor:pointer;
+  }
   .dealer-risk-banner{
     display:none; align-items:center; gap:10px; flex-wrap:wrap;
     background:rgba(58,160,255,0.10); border-bottom:1px solid var(--blue);
@@ -470,6 +479,7 @@
       margin-top:auto; font-family:var(--mono); font-size:10px; color:var(--text-faint);
       padding:8px 4px 2px; border-top:1px solid var(--border-soft);
     }
+    .app-version{ display:inline-block; margin-top:4px; opacity:0.6; letter-spacing:0.5px; }
 
     /* the mobile horizontal chip strip is replaced by the rail on desktop */
     .watchlist-row{ display:none !important; }
@@ -556,7 +566,6 @@
       <div class="metric metric-hero" id="spotCard"><div class="lbl">Spot</div><div class="v" id="mSpot">—</div></div>
       <div class="metric metric-hero" id="mvcDayCard"><div class="lbl">MVC · Day</div><div class="v gold" id="mMvcDay">—</div><div class="sub" id="mMvcDaySub"></div></div>
       <div class="metric metric-hero" id="mvcWeekCard"><div class="lbl">MVC · Week</div><div class="v gold" id="mMvcWeek">—</div><div class="sub" id="mMvcWeekSub"></div></div>
-      <div class="metric"><div class="lbl">Regime</div><div class="v" id="mRegime">—</div></div>
     </form>
   </div>
 
@@ -574,14 +583,14 @@
     </div>
 
     <div class="control-group">
-      <button class="small" id="loadIvBtn">Load IV / EM</button>
-      <button class="small" id="loadSurgeBtn">Load Hot</button>
+      <button class="small" id="loadIvBtn">IV / EM</button>
+      <button class="small" id="loadSurgeBtn">Hot</button>
       <button class="toggle small" id="liveDiffBtn">Diff: Off</button>
       <button class="toggle small" id="dexModeBtn">DEX: Off</button>
       <span class="freshness-note" id="flowFreshnessNote" style="display:none;"></span>
-      <button class="small" id="loadNarrativeBtn">Load Narrative</button>
-      <button class="small" id="loadMacroBtn">Load Macro</button>
-      <button class="small" id="loadLiveLevelsBtn">Load Live Levels</button>
+      <button class="small" id="loadNarrativeBtn">Narrative</button>
+      <button class="small" id="loadMacroBtn">Macro</button>
+      <button class="small" id="loadLiveLevelsBtn">Live Levels</button>
     </div>
 
     <div class="budget-readout" id="budgetReadout">req today: 0/2400</div>
@@ -614,6 +623,11 @@
 </div>
 
 <div class="zero-data-notice" id="zeroDataNotice" style="display:none;"></div>
+
+<div class="update-banner" id="updateBanner" style="display:none;">
+  <span>A new version has loaded.</span>
+  <button type="button" id="updateReloadBtn">Reload now</button>
+</div>
 
 <div class="dealer-risk-banner" id="dealerRiskBanner" style="display:none;"></div>
 
@@ -687,6 +701,9 @@
   'use strict';
 
   const BASE = 'https://lab.flashalpha.com';
+  // Bumped alongside the service worker's CACHE_NAME on every release, so a glance at the
+  // bottom-left corner confirms whether a GitHub push has actually taken effect yet.
+  const APP_VERSION = 'v44';
   let DAILY_CAP = 2400; // fallback estimate until /v1/account confirms the real plan limit
   const MIN_SNAP_INTERVAL_MS = 15000;
   const REQ_TIMEOUT_MS = 12000;
@@ -891,7 +908,7 @@
     const capLabel = (state.dailyCapConfirmed ? DAILY_CAP : ('~' + DAILY_CAP));
     budgetReadout.innerHTML = `req today: <span class="${cls}">${state.requestCount}/${capLabel}</span> · ~${estimateSnapCost()}/snap`;
     const rf = document.getElementById('railFooter');
-    if(rf) rf.innerHTML = `<span class="${cls}">${state.requestCount}/${capLabel}</span> req today<br>~${estimateSnapCost()} per snap`;
+    if(rf) rf.innerHTML = `<span class="${cls}">${state.requestCount}/${capLabel}</span> req today<br>~${estimateSnapCost()} per snap<br><span class="app-version">${APP_VERSION}</span>`;
   }
   function estimateSnapCost(){
     const n = state.manualPick ? state.manualPick.length : (state.selectedExpirations.length || 5);
@@ -1246,7 +1263,7 @@
     }catch(err){
       alert('IV load failed: ' + err.message);
     }finally{
-      btn.textContent = state.ivLoaded ? 'Reload IV / EM' : origText;
+      btn.textContent = state.ivLoaded ? origText.replace(/ 🔄$/, '') + ' 🔄' : origText;
       btn.disabled = false;
     }
   }
@@ -1313,7 +1330,7 @@
     }catch(err){
       alert('Hot load failed: ' + err.message);
     }finally{
-      btn.textContent = state.surgeLoaded ? 'Reload Hot' : origText;
+      btn.textContent = state.surgeLoaded ? origText.replace(/ 🔄$/, '') + ' 🔄' : origText;
       btn.disabled = false;
     }
   }
@@ -1744,7 +1761,7 @@
         ).join('') + freshHtml;
       }
       $('macroPanel').style.display = 'flex';
-      btn.textContent = 'Reload Macro';
+      btn.textContent = origText.replace(/ 🔄$/, '') + ' 🔄';
     }catch(err){
       alert('Macro load failed: ' + err.message);
       btn.textContent = origText;
@@ -1804,7 +1821,7 @@
           return `<div class="rail-macro-item"><span class="lbl">${lbl}</span><span class="v">$${formatStrike(live)}${moveTag}</span></div>`;
         }).join('');
       }
-      btn.textContent = 'Reload Live Levels';
+      btn.textContent = origText.replace(/ 🔄$/, '') + ' 🔄';
     }catch(err){
       alert('Live Levels load failed: ' + err.message);
       btn.textContent = origText;
@@ -1874,7 +1891,7 @@
         const nestedKeys = (n && typeof n === 'object') ? Object.keys(n).join(', ') : '(not an object)';
         throw new Error('narrative field exists but has no usable text. Its keys: ' + nestedKeys);
       }
-      btn.textContent = 'Reload Narrative';
+      btn.textContent = origText.replace(/ 🔄$/, '') + ' 🔄';
     }catch(err){
       alert('Narrative load failed: ' + err.message);
       btn.textContent = origText;
@@ -1929,7 +1946,7 @@
   }
 
   function renderMetrics(){
-    $('mSpot').textContent = state.spot != null ? '$' + state.spot.toFixed(2) : '—';
+    $('mSpot').textContent = state.spot != null ? (state.ticker ? state.ticker + ' ' : '') + '$' + state.spot.toFixed(2) : '—';
 
     let totalNet = 0;
     Object.values(state.gexByExp).forEach(d => totalNet += (d.net_gex || 0));
@@ -1990,10 +2007,6 @@
     const mMvcDaySub = document.getElementById('mMvcDaySub');
     if(mMvcDay) mMvcDay.textContent = mvcDayStrike != null ? formatStrike(mvcDayStrike) : '—';
     if(mMvcDaySub) mMvcDaySub.textContent = mvcDayStrike != null ? fmtMoney(mvcDayVal) : '';
-
-    const mRegime = $('mRegime');
-    mRegime.textContent = totalNet >= 0 ? 'Positive (calm)' : 'Negative (volatile)';
-    mRegime.className = 'v ' + (totalNet >= 0 ? 'pos' : 'neg');
 
     const mPin = $('mPin');
     const mPinSub = $('mPinSub');
@@ -2684,6 +2697,22 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('service-worker.js').catch(() => {
       // silently ignore — e.g. running from file:// during local testing
     });
+  });
+
+  // Fires when a NEW service worker (from a fresh GitHub push, once skipWaiting has run)
+  // takes over the page. Don't auto-reload mid-session — show a prompt instead, so a
+  // GitHub push landing is visible immediately instead of needing a manual hard-refresh
+  // to confirm it worked.
+  let swRefreshed = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if(swRefreshed) return;
+    swRefreshed = true;
+    const banner = document.getElementById('updateBanner');
+    if(banner) banner.style.display = 'flex';
+  });
+  document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('updateReloadBtn');
+    if(btn) btn.addEventListener('click', () => location.reload());
   });
 }
 </script>
