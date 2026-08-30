@@ -55,8 +55,8 @@
   header{
     background:var(--panel);
     border-bottom:1px solid var(--border);
-    padding:10px 14px;
-    display:flex; flex-direction:column; gap:8px;
+    padding:7px 14px;
+    display:flex; flex-direction:column; gap:5px;
     flex-shrink:0;
   }
   .brand-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
@@ -194,9 +194,9 @@
 
   /* ---------- "Where GEX Sits" plain-English summary ---------- */
   .gex-sits-banner{
-    display:none; flex-direction:column; gap:4px;
+    display:none; flex-direction:column; gap:2px;
     background:var(--panel); border-bottom:1px solid var(--border-soft);
-    padding:8px 14px; font-family:var(--mono); font-size:12px; flex-shrink:0;
+    padding:6px 14px; font-family:var(--mono); font-size:11.5px; flex-shrink:0;
   }
   .gex-sits-row{ display:flex; align-items:baseline; gap:8px; }
   .gex-sits-desc{ color:var(--text-dim); font-family:var(--sans); }
@@ -204,7 +204,7 @@
   /* ---------- Floor / Magnet / Flip / Ceiling number-line rail ---------- */
   .level-rail-wrap{
     display:none; background:var(--panel); border-bottom:1px solid var(--border-soft);
-    padding:22px 14px 26px; flex-shrink:0;
+    padding:44px 14px 16px; flex-shrink:0;
   }
   .rail-track{ position:relative; height:2px; background:var(--border); margin:0 4px; }
   .rail-tick{ position:absolute; top:0; transform:translateX(-50%); text-align:center; }
@@ -214,8 +214,9 @@
     box-shadow:0 0 0 3px var(--panel);
   }
   .rail-tick-label{
-    position:absolute; top:-24px; left:50%; transform:translateX(-50%);
-    font-family:var(--mono); font-size:9px; color:var(--tick-color); white-space:nowrap; text-transform:uppercase; letter-spacing:0.4px;
+    position:absolute; left:50%; transform:translateX(-50%);
+    font-family:var(--mono); font-size:9px; white-space:nowrap; text-transform:uppercase; letter-spacing:0.4px;
+    line-height:1.5;
   }
   .rail-tick-val{
     position:absolute; top:12px; left:50%; transform:translateX(-50%);
@@ -273,7 +274,9 @@
   }
   .srp-btn.active{ background:var(--blue-deep); border-color:var(--blue); color:#fff; }
   table.gex-grid thead th .exp-date{ font-size:10.5px; color:var(--text); }
-  table.gex-grid thead th .exp-mvc{ font-size:8px; color:var(--gold); font-weight:400; margin-top:1px; }
+  table.gex-grid thead th .exp-line{ font-size:8px; font-weight:400; margin-top:1px; white-space:nowrap; }
+  table.gex-grid thead th .exp-mvc{ color:var(--gold); }
+  table.gex-grid thead th .exp-sep{ color:var(--text-faint); }
   table.gex-grid thead th .opex-badge{
     display:inline-block; font-size:7px; font-weight:700; letter-spacing:0.4px;
     color:#3a2f0a; background:var(--gold); border-radius:3px; padding:1px 4px; margin-top:2px;
@@ -357,10 +360,9 @@
   td.mvc-cell .cellval::after{ content:' ★'; color:var(--gold); font-size:8px; }
   .oi-up{ color:var(--green); font-size:8px; margin-left:3px; }
   .oi-down{ color:var(--red); font-size:8px; margin-left:3px; }
-  table.gex-grid thead th .exp-walls{ font-size:9px; margin-top:1px; }
-  table.gex-grid thead th .exp-walls .cw{ color:var(--blue); }
-  table.gex-grid thead th .exp-walls .pw{ color:var(--orange); }
-  table.gex-grid thead th .exp-flip{ font-size:9px; margin-top:1px; color:var(--green); }
+  table.gex-grid thead th .exp-walls.cw{ color:var(--blue); }
+  table.gex-grid thead th .exp-walls.pw{ color:var(--orange); }
+  table.gex-grid thead th .exp-flip{ color:var(--green); }
   .metric .sub.chip{ font-weight:600; }
 
   .netcol-head{ min-width:128px !important; }
@@ -439,6 +441,10 @@
       text-transform:uppercase; letter-spacing:0.6px; padding:0 4px;
     }
     .rail-title-row{ display:flex; align-items:center; justify-content:space-between; padding:0 4px; }
+    .rail-title-collapse{ cursor:pointer; user-select:none; }
+    .rail-collapse-arrow{ display:inline-block; font-size:8px; transition:transform .12s; }
+    .rail-title-collapse.collapsed .rail-collapse-arrow{ transform:rotate(-90deg); }
+    .rail-macro-grid.collapsed{ display:none; }
     .rail-title-row .rail-title{ padding:0; }
     .rail-refresh-btn{
       background:transparent; border:1px solid var(--border); color:var(--text-faint);
@@ -490,9 +496,7 @@
 
     table.gex-grid thead th{ padding:7px 9px; }
     table.gex-grid thead th .exp-date{ font-size:12.5px; }
-    table.gex-grid thead th .exp-mvc{ font-size:11px; }
-    table.gex-grid thead th .exp-walls{ font-size:11px; }
-    table.gex-grid thead th .exp-flip{ font-size:11px; }
+    table.gex-grid thead th .exp-line{ font-size:11px; }
 
     /* symbol entry now lives in the rail — hide the header's copy, freeing up header space */
     #tickerForm #tickerInput, #tickerForm #favBtn, #tickerForm #loadBtn{ display:none; }
@@ -537,10 +541,10 @@
     </div>
     <div class="rail-list" id="railList"></div>
 
-    <div class="rail-title" style="margin-top:14px;">Macro</div>
+    <div class="rail-title rail-title-collapse" id="macroRailTitle" style="margin-top:14px;"><span class="rail-collapse-arrow">▾</span> Macro</div>
     <div class="rail-macro-grid" id="macroRailGrid"><div class="rail-empty">Tap "Load Macro" above.</div></div>
 
-    <div class="rail-title" style="margin-top:14px;">Live Levels</div>
+    <div class="rail-title rail-title-collapse" id="liveLevelsRailTitle" style="margin-top:14px;"><span class="rail-collapse-arrow">▾</span> Live Levels</div>
     <div class="rail-macro-grid" id="liveLevelsRailGrid"><div class="rail-empty">Tap "Load Live Levels" above.</div></div>
 
     <div class="rail-footer" id="railFooter"></div>
@@ -703,7 +707,7 @@
   const BASE = 'https://lab.flashalpha.com';
   // Bumped alongside the service worker's CACHE_NAME on every release, so a glance at the
   // bottom-left corner confirms whether a GitHub push has actually taken effect yet.
-  const APP_VERSION = 'v44';
+  const APP_VERSION = 'v45';
   let DAILY_CAP = 2400; // fallback estimate until /v1/account confirms the real plan limit
   const MIN_SNAP_INTERVAL_MS = 15000;
   const REQ_TIMEOUT_MS = 12000;
@@ -2360,21 +2364,52 @@
         gexSitsEl.style.display = 'flex';
 
         // Rail: position Floor/Magnet/Flip/Ceiling and spot proportionally along a number line.
-        const railPoints = [
+        const rawPoints = [
           meta.putWall != null ? { label: 'Floor', v: meta.putWall, color: 'var(--orange)' } : null,
           meta.mvcStrike != null ? { label: '★ Magnet', v: meta.mvcStrike, color: 'var(--gold)' } : null,
           meta.flipStrike != null ? { label: 'Flip', v: meta.flipStrike, color: 'var(--purple)' } : null,
           meta.callWall != null ? { label: 'Ceiling', v: meta.callWall, color: 'var(--blue)' } : null,
         ].filter(Boolean);
+        // Two levels can genuinely land on the exact same strike (e.g. Floor == Magnet) —
+        // merge those into one tick with both names stacked, one dot, so labels never
+        // literally overwrite each other regardless of screen width.
+        const byValue = {};
+        rawPoints.forEach(p => {
+          const key = String(p.v);
+          if(!byValue[key]) byValue[key] = { v: p.v, items: [] };
+          byValue[key].items.push(p);
+        });
+        const railPoints = Object.values(byValue).map(group => ({
+          v: group.v,
+          items: group.items, // one or more {label, color} sharing this exact value
+          color: group.items[0].color,
+        }));
         if(railPoints.length >= 2){
           const allVals = railPoints.map(p => p.v).concat([state.spot]);
           const lo = Math.min(...allVals), hi = Math.max(...allVals);
           const span = (hi - lo) || 1;
           const pad = 6; // percent margin so end labels don't clip off the edge
           const posOf = v => pad + ((v - lo) / span) * (100 - pad * 2);
-          const ticksHtml = railPoints.map(p =>
-            `<div class="rail-tick" style="left:${posOf(p.v).toFixed(1)}%; --tick-color:${p.color}"><div class="rail-tick-label">${escapeHtml(p.label)}</div><div class="rail-tick-val">${formatStrike(p.v)}</div></div>`
-          ).join('');
+          // Even after merging exact duplicates, two DIFFERENT values can still render close
+          // enough on screen for their text to overlap — stagger those into alternating
+          // vertical tiers (extra px of top offset) instead of letting labels collide.
+          const MIN_GAP_PCT = 9;
+          const sorted = [...railPoints].sort((a, b) => posOf(a.v) - posOf(b.v));
+          let lastPos = null, tier = 0;
+          const tierByValue = {};
+          sorted.forEach(p => {
+            const pos = posOf(p.v);
+            tier = (lastPos != null && (pos - lastPos) < MIN_GAP_PCT) ? tier + 1 : 0;
+            tierByValue[p.v] = tier;
+            lastPos = pos;
+          });
+          const ticksHtml = railPoints.map(p => {
+            const labelsHtml = p.items.map(it => `<div style="color:${it.color}">${escapeHtml(it.label)}</div>`).join('');
+            const tierOffset = tierByValue[p.v] * 15; // px pushed further up per tier
+            return `<div class="rail-tick" style="left:${posOf(p.v).toFixed(1)}%; --tick-color:${p.color}">` +
+              `<div class="rail-tick-label" style="top:${-24 - tierOffset}px">${labelsHtml}</div>` +
+              `<div class="rail-tick-val">${formatStrike(p.v)}</div></div>`;
+          }).join('');
           railEl.innerHTML = `<div class="rail-track">${ticksHtml}<div class="rail-spot" style="left:${posOf(state.spot).toFixed(1)}%" title="Spot ${formatStrike(state.spot)}"></div></div>`;
           railEl.style.display = 'block';
         } else {
@@ -2395,16 +2430,20 @@
     </th>`;
     exps.forEach(e => {
       const meta = expMeta[e];
-      const mvcHtml = meta.mvcStrike != null ? `<div class="exp-mvc">MVC $${formatStrike(meta.mvcStrike)}</div>` : '';
+      // Condensed to 2 lines instead of 4: "MVC $X · Flip $Y" and "CW $X (+%) · PW $Y (-%)"
+      const mvcFlipParts = [];
+      if(meta.mvcStrike != null) mvcFlipParts.push(`<span class="exp-mvc">MVC $${formatStrike(meta.mvcStrike)}</span>`);
+      if(meta.flipStrike != null) mvcFlipParts.push(`<span class="exp-flip">Flip $${formatStrike(meta.flipStrike)}</span>`);
+      const mvcFlipHtml = mvcFlipParts.length ? `<div class="exp-line">${mvcFlipParts.join(' <span class="exp-sep">·</span> ')}</div>` : '';
+
       let wallsHtml = '';
       if(meta.callWall != null){
         const cwPct = state.spot ? ' (' + (meta.callWall >= state.spot ? '+' : '') + (((meta.callWall - state.spot)/state.spot)*100).toFixed(1) + '%)' : '';
         const pwPct = state.spot ? ' (' + (meta.putWall >= state.spot ? '+' : '') + (((meta.putWall - state.spot)/state.spot)*100).toFixed(1) + '%)' : '';
-        wallsHtml = `<div class="exp-walls"><span class="cw">CW $${formatStrike(meta.callWall)}${cwPct}</span></div><div class="exp-walls"><span class="pw">PW $${formatStrike(meta.putWall)}${pwPct}</span></div>`;
+        wallsHtml = `<div class="exp-line"><span class="exp-walls cw">CW $${formatStrike(meta.callWall)}${cwPct}</span> <span class="exp-sep">·</span> <span class="exp-walls pw">PW $${formatStrike(meta.putWall)}${pwPct}</span></div>`;
       }
       const opexHtml = isOpexFriday(e) ? '<div class="opex-badge">OPEX</div>' : '';
-      const flipHtml = meta.flipStrike != null ? `<div class="exp-flip">Flip $${formatStrike(meta.flipStrike)}</div>` : '';
-      html += `<th><div class="exp-date">${formatExpHeader(e)}</div>${opexHtml}${mvcHtml}${wallsHtml}${flipHtml}</th>`;
+      html += `<th><div class="exp-date">${formatExpHeader(e)}</div>${opexHtml}${mvcFlipHtml}${wallsHtml}</th>`;
     });
     html += '<th class="netcol-head">Net GEX by strike →</th></tr></thead><tbody>';
 
@@ -2629,6 +2668,23 @@
   $('loadMacroBtn').addEventListener('click', loadMacro);
   $('loadLiveLevelsBtn').addEventListener('click', loadLiveLevels);
   $('railSummaryRefreshBtn').addEventListener('click', loadWatchlistSummaries);
+
+  // Collapsible Macro / Live Levels rail sections — state remembered across reloads.
+  function setupRailCollapse(titleId, gridId, storageKey){
+    const titleEl = $(titleId), gridEl = $(gridId);
+    if(!titleEl || !gridEl) return;
+    const collapsed = localStorage.getItem(storageKey) === '1';
+    titleEl.classList.toggle('collapsed', collapsed);
+    gridEl.classList.toggle('collapsed', collapsed);
+    titleEl.addEventListener('click', () => {
+      const nowCollapsed = !gridEl.classList.contains('collapsed');
+      titleEl.classList.toggle('collapsed', nowCollapsed);
+      gridEl.classList.toggle('collapsed', nowCollapsed);
+      localStorage.setItem(storageKey, nowCollapsed ? '1' : '0');
+    });
+  }
+  setupRailCollapse('macroRailTitle', 'macroRailGrid', 'fa_gexmatrix_macro_collapsed');
+  setupRailCollapse('liveLevelsRailTitle', 'liveLevelsRailGrid', 'fa_gexmatrix_livelevels_collapsed');
   $('macroCloseBtn').addEventListener('click', () => {
     $('macroPanel').style.display = 'none';
   });
