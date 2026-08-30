@@ -204,7 +204,7 @@
   /* ---------- Floor / Magnet / Flip / Ceiling number-line rail ---------- */
   .level-rail-wrap{
     display:none; background:var(--panel); border-bottom:1px solid var(--border-soft);
-    padding:44px 14px 16px; flex-shrink:0;
+    padding:44px 14px 44px; flex-shrink:0;
   }
   .rail-track{ position:relative; height:2px; background:var(--border); margin:0 4px; }
   .rail-tick{ position:absolute; top:0; transform:translateX(-50%); text-align:center; }
@@ -707,7 +707,7 @@
   const BASE = 'https://lab.flashalpha.com';
   // Bumped alongside the service worker's CACHE_NAME on every release, so a glance at the
   // bottom-left corner confirms whether a GitHub push has actually taken effect yet.
-  const APP_VERSION = 'v45';
+  const APP_VERSION = 'v46';
   let DAILY_CAP = 2400; // fallback estimate until /v1/account confirms the real plan limit
   const MIN_SNAP_INTERVAL_MS = 15000;
   const REQ_TIMEOUT_MS = 12000;
@@ -2393,7 +2393,7 @@
           // Even after merging exact duplicates, two DIFFERENT values can still render close
           // enough on screen for their text to overlap — stagger those into alternating
           // vertical tiers (extra px of top offset) instead of letting labels collide.
-          const MIN_GAP_PCT = 9;
+          const MIN_GAP_PCT = 12;
           const sorted = [...railPoints].sort((a, b) => posOf(a.v) - posOf(b.v));
           let lastPos = null, tier = 0;
           const tierByValue = {};
@@ -2405,10 +2405,10 @@
           });
           const ticksHtml = railPoints.map(p => {
             const labelsHtml = p.items.map(it => `<div style="color:${it.color}">${escapeHtml(it.label)}</div>`).join('');
-            const tierOffset = tierByValue[p.v] * 15; // px pushed further up per tier
+            const tierOffset = tierByValue[p.v] * 15; // px pushed further away from the line per tier
             return `<div class="rail-tick" style="left:${posOf(p.v).toFixed(1)}%; --tick-color:${p.color}">` +
               `<div class="rail-tick-label" style="top:${-24 - tierOffset}px">${labelsHtml}</div>` +
-              `<div class="rail-tick-val">${formatStrike(p.v)}</div></div>`;
+              `<div class="rail-tick-val" style="top:${12 + tierOffset}px">${formatStrike(p.v)}</div></div>`;
           }).join('');
           railEl.innerHTML = `<div class="rail-track">${ticksHtml}<div class="rail-spot" style="left:${posOf(state.spot).toFixed(1)}%" title="Spot ${formatStrike(state.spot)}"></div></div>`;
           railEl.style.display = 'block';
