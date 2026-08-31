@@ -192,19 +192,22 @@
   .freshness-note{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); align-self:center; }
   .freshness-note.stale{ color:var(--orange); }
 
-  /* ---------- "Where GEX Sits" plain-English summary ---------- */
+  /* ---------- "Where GEX Sits" summary + Floor/Magnet/Flip/Ceiling rail — shared row ---------- */
+  .info-cards-row{
+    display:flex; flex-direction:column;
+    border-bottom:1px solid var(--border-soft); flex-shrink:0;
+  }
   .gex-sits-banner{
     display:none; flex-direction:column; gap:2px;
     background:var(--panel); border-bottom:1px solid var(--border-soft);
-    padding:6px 14px; font-family:var(--mono); font-size:11.5px; flex-shrink:0;
+    padding:6px 14px; font-family:var(--mono); font-size:11.5px;
   }
   .gex-sits-row{ display:flex; align-items:baseline; gap:8px; }
   .gex-sits-desc{ color:var(--text-dim); font-family:var(--sans); }
 
-  /* ---------- Floor / Magnet / Flip / Ceiling number-line rail ---------- */
   .level-rail-wrap{
-    display:none; background:var(--panel); border-bottom:1px solid var(--border-soft);
-    padding:44px 14px 44px; flex-shrink:0;
+    display:none; background:var(--panel);
+    padding:44px 14px 44px;
   }
   .rail-track{ position:relative; height:2px; background:var(--border); margin:0 4px; }
   .rail-tick{ position:absolute; top:0; transform:translateX(-50%); text-align:center; }
@@ -226,6 +229,11 @@
     position:absolute; top:50%; transform:translate(-50%, -50%);
     width:11px; height:11px; border-radius:50%; background:#fff;
     box-shadow:0 0 0 3px var(--panel), 0 0 8px rgba(255,255,255,0.6); z-index:2;
+  }
+  @media (min-width:900px){
+    .info-cards-row{ flex-direction:row; align-items:stretch; }
+    .gex-sits-banner{ flex:0 0 360px; border-bottom:none; border-right:1px solid var(--border-soft); justify-content:center; }
+    .level-rail-wrap{ flex:1; min-width:0; }
   }
   .dealer-risk-banner .direction-pill{
     font-family:var(--mono); font-weight:700; font-size:10.5px; padding:2px 8px; border-radius:8px;
@@ -637,8 +645,10 @@
 
 <div class="dealer-risk-banner" id="dexSummaryBanner" style="display:none;"></div>
 
-<div class="gex-sits-banner" id="gexSitsBanner" style="display:none;"></div>
-<div class="level-rail-wrap" id="levelRailBar" style="display:none;"></div>
+<div class="info-cards-row">
+  <div class="gex-sits-banner" id="gexSitsBanner" style="display:none;"></div>
+  <div class="level-rail-wrap" id="levelRailBar" style="display:none;"></div>
+</div>
 
 <div class="grid-wrap" id="gridWrap">
   <div class="empty-state">
@@ -707,7 +717,7 @@
   const BASE = 'https://lab.flashalpha.com';
   // Bumped alongside the service worker's CACHE_NAME on every release, so a glance at the
   // bottom-left corner confirms whether a GitHub push has actually taken effect yet.
-  const APP_VERSION = 'v46';
+  const APP_VERSION = 'v47';
   let DAILY_CAP = 2400; // fallback estimate until /v1/account confirms the real plan limit
   const MIN_SNAP_INTERVAL_MS = 15000;
   const REQ_TIMEOUT_MS = 12000;
