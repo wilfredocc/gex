@@ -721,7 +721,7 @@
   const BASE = 'https://lab.flashalpha.com';
   // Bumped alongside the service worker's CACHE_NAME on every release, so a glance at the
   // bottom-left corner confirms whether a GitHub push has actually taken effect yet.
-  const APP_VERSION = 'v48';
+  const APP_VERSION = 'v49';
   let DAILY_CAP = 2400; // fallback estimate until /v1/account confirms the real plan limit
   const MIN_SNAP_INTERVAL_MS = 15000;
   const REQ_TIMEOUT_MS = 12000;
@@ -1626,13 +1626,17 @@
   function vexColor(value, maxAbs){
     // Purple/rose — distinct from GEX's blue/orange and DEX's green/red, since vanna exposure
     // is a genuinely different axis (vol-coupling, not gamma or delta positioning).
+    // Steeper curve (0.42 vs GEX's 0.75) than the other color scales — VEX values tend to
+    // cluster much closer together with one outlier (usually the MVC strike) dominating the
+    // percentile max, which squashed every mid-range cell into a near-identical, hard-to-read
+    // opacity band. This spreads the mid-range out for real visual separation.
     if(!maxAbs || maxAbs <= 0) return 'rgba(255,255,255,0.03)';
     const t = Math.min(Math.abs(value) / maxAbs, 1);
-    const eased = Math.pow(t, 0.75);
+    const eased = Math.pow(t, 0.42);
     if(value >= 0){
-      return `rgba(185,138,240,${(0.05 + eased*0.80).toFixed(3)})`; // --purple
+      return `rgba(185,138,240,${(0.06 + eased*0.78).toFixed(3)})`; // --purple
     }
-    return `rgba(255,111,174,${(0.05 + eased*0.80).toFixed(3)})`; // --rose
+    return `rgba(255,111,174,${(0.06 + eased*0.78).toFixed(3)})`; // --rose
   }
 
   async function toggleVexMode(){
@@ -1875,6 +1879,25 @@
         if(pcr==null && callOi==null && putOi==null && netFlow==null){
           console.warn('[GEX] summary.options_flow had no recognized fields. Keys:', Object.keys(flowObj).join(', '));
         }
+      }
+
+      // IV Rank / IV Percentile — confirmed Basic-tier endpoint, separate from the summary
+      // call above (its own dedicated volatility payload, not guaranteed to duplicate into
+      // summary.volatility). One extra request, only on a Macro load, not every snap.
+      try{
+        const ivRes = await fa('/v1/volatility/' + encodeURIComponent(state.ticker));
+        const ivContainer = ivRes.volatility || ivRes;
+        const ivRank = toNum(ivContainer.iv_rank ?? ivContainer.ivRank);
+        const ivPct  = toNum(ivContainer.iv_percentile ?? ivContainer.ivPercentile);
+        const vrpLabel = ivContainer.vrp_assessment ?? ivContainer.assessment ?? ivContainer.vrp_label;
+        if(ivRank != null) items.push(['IV Rank', ivRank.toFixed(0)]);
+        if(ivPct  != null) items.push(['IV %ile', ivPct.toFixed(0)]);
+        if(vrpLabel) items.push(['VRP Read', String(vrpLabel).replace(/_/g,' ')]);
+        if(ivRank == null && ivPct == null && !vrpLabel){
+          console.warn('[GEX] /v1/volatility had no recognized fields. Keys:', Object.keys(ivContainer).join(', '));
+        }
+      }catch(err){
+        console.warn('[GEX] /v1/volatility fetch failed (non-critical):', err.message);
       }
 
       const rowsHtml = items.map(([lbl, v, chgPct]) => {
