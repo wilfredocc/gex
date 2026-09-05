@@ -721,7 +721,7 @@
   const BASE = 'https://lab.flashalpha.com';
   // Bumped alongside the service worker's CACHE_NAME on every release, so a glance at the
   // bottom-left corner confirms whether a GitHub push has actually taken effect yet.
-  const APP_VERSION = 'v49';
+  const APP_VERSION = 'v50';
   let DAILY_CAP = 2400; // fallback estimate until /v1/account confirms the real plan limit
   const MIN_SNAP_INTERVAL_MS = 15000;
   const REQ_TIMEOUT_MS = 12000;
@@ -1210,11 +1210,25 @@
         throw new Error('No expirations available for ' + state.ticker);
       }
 
-      const results = await Promise.all(exps.map(e =>
+      // Levels / Pin Risk / 0DTE don't depend on each other OR on the grid data — they only
+      // need the ticker. Previously these ran one after another (levels, THEN pin-risk, THEN
+      // 0DTE), stacking three full network round-trips in serial after the grid had already
+      // loaded. Firing them alongside the grid fetch instead cuts real wall-clock wait time —
+      // total time becomes however long the SLOWEST of these takes, not the sum of all four.
+      const gridPromise = Promise.all(exps.map(e =>
         fa('/v1/exposure/gex/' + encodeURIComponent(state.ticker) + '?expiration=' + e)
           .then(r => ({exp:e, data:r}))
           .catch(err => ({exp:e, error: err.message}))
       ));
+      const levelsPromise = fa('/v1/exposure/levels/' + encodeURIComponent(state.ticker)).catch(() => null);
+      const pinRiskPromise = fa('/v1/flow/pin-risk/' + encodeURIComponent(state.ticker))
+        .then(pr => ({data: pr, error: null}))
+        .catch(err => ({data: null, error: err.message}));
+      const zeroDtePromise = state.mode0dte
+        ? fa('/v1/exposure/zero-dte/' + encodeURIComponent(state.ticker)).catch(() => null)
+        : Promise.resolve(null);
+
+      const [results, lvl, pinRiskRes, zd] = await Promise.all([gridPromise, levelsPromise, pinRiskPromise, zeroDtePromise]);
 
       const byExp = {};
       let spot = null;
@@ -1232,25 +1246,12 @@
       // surface which, instead of silently rendering a grid full of $0.
       checkAllZeroGex(byExp);
 
-      try{
-        const lvl = await fa('/v1/exposure/levels/' + encodeURIComponent(state.ticker));
-        state.levels = lvl.levels || lvl;
-      }catch(e){ state.levels = null; }
+      state.levels = lvl ? (lvl.levels || lvl) : null;
 
-      try{
-        const pr = await fa('/v1/flow/pin-risk/' + encodeURIComponent(state.ticker));
-        state.pinRisk = pr.pin_risk || pr;
-        state.pinRiskError = null;
-      }catch(e){ state.pinRisk = null; state.pinRiskError = e.message; }
+      state.pinRisk = pinRiskRes.data ? (pinRiskRes.data.pin_risk || pinRiskRes.data) : null;
+      state.pinRiskError = pinRiskRes.error;
 
-      if(state.mode0dte){
-        try{
-          const zd = await fa('/v1/exposure/zero-dte/' + encodeURIComponent(state.ticker));
-          state.zeroDte = zd.no_zero_dte ? null : zd;
-        }catch(e){ state.zeroDte = null; }
-      } else {
-        state.zeroDte = null;
-      }
+      state.zeroDte = (zd && !zd.no_zero_dte) ? zd : null;
 
       state.lastSnap = Date.now();
       lastUpdatedEl.textContent = new Date().toLocaleTimeString();
