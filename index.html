@@ -721,7 +721,7 @@
   const BASE = 'https://lab.flashalpha.com';
   // Bumped alongside the service worker's CACHE_NAME on every release, so a glance at the
   // bottom-left corner confirms whether a GitHub push has actually taken effect yet.
-  const APP_VERSION = 'v50';
+  const APP_VERSION = 'v51';
   let DAILY_CAP = 2400; // fallback estimate until /v1/account confirms the real plan limit
   const MIN_SNAP_INTERVAL_MS = 15000;
   const REQ_TIMEOUT_MS = 12000;
@@ -765,6 +765,7 @@
     volatility: null,
     spot: null,
     lastSnap: null,
+    pendingSnap: false,
     requestCount: parseInt(localStorage.getItem(todayKey()) || '0', 10),
     dailyCapConfirmed: false,
     ivLoaded: false,
@@ -1192,9 +1193,19 @@
   }
 
   async function runSnap(isPoll){
-    if(state.busy) return;
+    if(state.busy){
+      // Don't just drop this click — remember it and fire once the in-flight fetch finishes,
+      // so clicking a ticker mid-fetch (e.g. switching quickly) doesn't silently do nothing.
+      state.pendingSnap = true;
+      return;
+    }
     if(!state.ticker) return;
-    if(state.lastSnap && (Date.now() - state.lastSnap) < MIN_SNAP_INTERVAL_MS){
+    // The 15s throttle exists to stop the automatic poll timer from hammering the API —
+    // it was previously applied to every call, which meant a deliberate click (switching
+    // tickers, hitting Load) could silently do nothing if it landed within 15s of the last
+    // fetch, with zero feedback beyond the status dot never blinking. Explicit user actions
+    // (isPoll=false) always bypass this; only the automatic poll tick (isPoll=true) respects it.
+    if(isPoll && state.lastSnap && (Date.now() - state.lastSnap) < MIN_SNAP_INTERVAL_MS){
       return;
     }
     state.busy = true;
@@ -1264,6 +1275,10 @@
       showError(err.message);
     }finally{
       state.busy = false;
+      if(state.pendingSnap){
+        state.pendingSnap = false;
+        runSnap(false);
+      }
     }
   }
 
