@@ -595,7 +595,6 @@
     </div>
 
     <div class="control-group">
-      <button class="small" id="loadIvBtn">IV / EM</button>
       <button class="small" id="loadSurgeBtn">Hot</button>
       <button class="toggle small" id="liveDiffBtn">Diff: Off</button>
       <button class="toggle small" id="dexModeBtn">DEX: Off</button>
@@ -721,7 +720,7 @@
   const BASE = 'https://lab.flashalpha.com';
   // Bumped alongside the service worker's CACHE_NAME on every release, so a glance at the
   // bottom-left corner confirms whether a GitHub push has actually taken effect yet.
-  const APP_VERSION = 'v51';
+  const APP_VERSION = 'v53';
   let DAILY_CAP = 2400; // fallback estimate until /v1/account confirms the real plan limit
   const MIN_SNAP_INTERVAL_MS = 15000;
   const REQ_TIMEOUT_MS = 12000;
@@ -1282,28 +1281,6 @@
     }
   }
 
-  async function loadIv(){
-    if(!state.ticker) return;
-    const btn = $('loadIvBtn');
-    const origText = btn.textContent;
-    btn.textContent = 'Loading…';
-    btn.disabled = true;
-    try{
-      const vol = await fa('/v1/volatility/' + encodeURIComponent(state.ticker));
-      state.volatility = vol;
-      state.ivLoaded = true;
-      render();
-      // ATM IV / Exp Move pills are the last two in the metrics strip — scroll them into view
-      const mIvEl = $('mIv');
-      if(mIvEl) mIvEl.closest('.metric').scrollIntoView({behavior:'smooth', inline:'end', block:'nearest'});
-    }catch(err){
-      alert('IV load failed: ' + err.message);
-    }finally{
-      btn.textContent = state.ivLoaded ? origText.replace(/ 🔄$/, '') + ' 🔄' : origText;
-      btn.disabled = false;
-    }
-  }
-
   async function loadSurge(){
     if(!state.ticker){
       alert('Enter a ticker first, then Hot.');
@@ -1329,9 +1306,13 @@
         throw new Error('No expirations found for ' + state.ticker + '.');
       }
 
+      // Settled GEX for nearestExp is very likely already sitting in state.gexByExp from the
+      // main grid load (Diff mode already reuses it this way) — only fetch it fresh if that
+      // expiration genuinely isn't cached yet, saving a full duplicate request in the common case.
+      const cachedSettled = state.gexByExp[nearestExp];
       const [liveRes, settledRes] = await Promise.all([
         fa('/v1/flow/gex/' + encodeURIComponent(state.ticker) + '?expiration=' + nearestExp),
-        fa('/v1/exposure/gex/' + encodeURIComponent(state.ticker) + '?expiration=' + nearestExp),
+        cachedSettled ? Promise.resolve(cachedSettled) : fa('/v1/exposure/gex/' + encodeURIComponent(state.ticker) + '?expiration=' + nearestExp),
       ]);
 
       const liveStrikes = liveRes.strikes || [];
@@ -1897,11 +1878,13 @@
         }
       }
 
-      // IV Rank / IV Percentile — confirmed Basic-tier endpoint, separate from the summary
-      // call above (its own dedicated volatility payload, not guaranteed to duplicate into
-      // summary.volatility). One extra request, only on a Macro load, not every snap.
+      // IV Rank / IV Percentile / ATM IV / Expected Move — one /v1/volatility fetch now
+      // covers all of it, since the standalone "IV / EM" button was removed. Setting
+      // state.volatility here is what makes the header's ATM IV / Exp Move pills and the
+      // ◆1x/1.5x/2x EM band tags on the grid populate automatically from a Macro click.
       try{
         const ivRes = await fa('/v1/volatility/' + encodeURIComponent(state.ticker));
+        state.volatility = ivRes;
         const ivContainer = ivRes.volatility || ivRes;
         const ivRank = toNum(ivContainer.iv_rank ?? ivContainer.ivRank);
         const ivPct  = toNum(ivContainer.iv_percentile ?? ivContainer.ivPercentile);
@@ -1909,7 +1892,18 @@
         if(ivRank != null) items.push(['IV Rank', ivRank.toFixed(0)]);
         if(ivPct  != null) items.push(['IV %ile', ivPct.toFixed(0)]);
         if(vrpLabel) items.push(['VRP Read', String(vrpLabel).replace(/_/g,' ')]);
-        if(ivRank == null && ivPct == null && !vrpLabel){
+
+        // Expected Move, shown right in the Macro panel too (not just the header pill) —
+        // same calc render() uses: spot × ATM IV × sqrt(DTE/365).
+        const atmIv = toNum(ivContainer.atm_iv ?? ivContainer.atmIv);
+        const nearestExp = state.selectedExpirations[0];
+        if(atmIv != null && nearestExp && state.spot){
+          const dte = Math.max(dteFor(nearestExp), 0.4);
+          const em = state.spot * (atmIv/100) * Math.sqrt(dte/365);
+          items.push(['Exp Move', '±$' + em.toFixed(2)]);
+        }
+
+        if(ivRank == null && ivPct == null && !vrpLabel && atmIv == null){
           console.warn('[GEX] /v1/volatility had no recognized fields. Keys:', Object.keys(ivContainer).join(', '));
         }
       }catch(err){
@@ -2225,7 +2219,7 @@
         state.emValue = null;
       }
     } else {
-      $('mIv').textContent = '— (load)';
+      $('mIv').textContent = '— (Macro)';
       $('mEm').textContent = '—';
       state.emValue = null;
     }
@@ -2854,7 +2848,6 @@
     if(state.allExpirations.length) runSnap(false);
   });
 
-  $('loadIvBtn').addEventListener('click', loadIv);
   $('loadSurgeBtn').addEventListener('click', loadSurge);
   $('liveDiffBtn').addEventListener('click', toggleLiveDiff);
   $('dexModeBtn').addEventListener('click', toggleDexMode);
